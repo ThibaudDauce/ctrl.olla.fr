@@ -396,7 +396,7 @@ new class extends Component {
                     </div>
                     <div>
                         <flux:text class="text-zinc-500 text-sm">Ampérage</flux:text>
-                        <flux:heading size="lg">{{ $latest->charger_current }}A / {{ $latest->charger_current }}A
+                        <flux:heading size="lg">{{ $this->requestedAmps }}A / {{ config('charging.max_charge_amps') }}A
                         </flux:heading>
                     </div>
                     <div>
