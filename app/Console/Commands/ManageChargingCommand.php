@@ -40,7 +40,7 @@ class ManageChargingCommand extends Command
         }
 
         $this->handleOffPeak($latest, $charger, $session, $sms);
-        $this->handleSolar($latest, $charger, $session);
+        $this->handleSolar($latest, $charger, $session, $sms);
     }
 
     private function handleLoadShedding(Metric $latest, LektricoClient $charger, ?ChargingSession $session, SmsNotifier $sms): bool
@@ -60,7 +60,7 @@ class ManageChargingCommand extends Command
         if ($currentAmps <= $minAmps) {
             Log::warning('Load shedding: stopping charge, already at minimum amps');
             $charger->stop();
-            $this->closeSession($session, $latest);
+            $this->closeSession($session, $latest, $sms);
             $sms->send('Délestage : charge arrêtée, dépassement ampérage', 'load_shedding');
 
             return true;
@@ -69,6 +69,7 @@ class ManageChargingCommand extends Command
         $newAmps = $currentAmps - 1;
         Log::info("Load shedding: reducing from {$currentAmps}A to {$newAmps}A");
         $charger->setUserCurrent($newAmps);
+        $sms->send("Délestage : {$currentAmps}A → {$newAmps}A");
 
         return true;
     }
@@ -80,14 +81,16 @@ class ManageChargingCommand extends Command
 
         // Entering off-peak
         if ($isInOffPeak && ! $wasInOffPeak && $latest->charger_state->isConnectable()) {
+            $amps = config('charging.max_charge_amps');
             Log::info('Off-peak: starting charge');
-            $charger->setUserCurrent(config('charging.max_charge_amps'));
+            $charger->setUserCurrent($amps);
             $charger->start();
             $session = ChargingSession::query()->create([
                 'started_at' => now(),
                 'mode' => ChargingMode::OffPeak,
-                'max_current' => config('charging.max_charge_amps'),
+                'max_current' => $amps,
             ]);
+            $sms->send("Charge HC démarrée à {$amps}A");
 
             return;
         }
@@ -100,11 +103,11 @@ class ManageChargingCommand extends Command
 
             Log::info('Off-peak ended: stopping charge');
             $charger->stop();
-            $this->closeSession($session, $latest);
+            $this->closeSession($session, $latest, $sms);
         }
     }
 
-    private function handleSolar(Metric $latest, LektricoClient $charger, ?ChargingSession &$session): void
+    private function handleSolar(Metric $latest, LektricoClient $charger, ?ChargingSession &$session, SmsNotifier $sms): void
     {
         if ($this->isInOffPeakWindow(now())) {
             return;
@@ -136,6 +139,7 @@ class ManageChargingCommand extends Command
                     'mode' => ChargingMode::Solar,
                     'max_current' => $amps,
                 ]);
+                $sms->send("Charge solaire démarrée à {$amps}A");
             }
 
             return;
@@ -149,7 +153,7 @@ class ManageChargingCommand extends Command
             if ($positiveCount >= 2) {
                 Log::info('Solar: stopping charge, consuming from grid');
                 $charger->stop();
-                $this->closeSession($session, $latest);
+                $this->closeSession($session, $latest, $sms);
 
                 return;
             }
@@ -165,6 +169,7 @@ class ManageChargingCommand extends Command
                     $newAmps = $targetAmps > $currentAmps ? $currentAmps + 1 : $currentAmps - 1;
                     Log::info("Solar: adjusting from {$currentAmps}A to {$newAmps}A");
                     $charger->setUserCurrent($newAmps);
+                    $sms->send("Charge solaire : {$currentAmps}A → {$newAmps}A");
 
                     if ($newAmps > ($session->max_current ?? 0)) {
                         $session->update(['max_current' => $newAmps]);
@@ -208,15 +213,18 @@ class ManageChargingCommand extends Command
         }
     }
 
-    private function closeSession(?ChargingSession $session, Metric $latest): void
+    private function closeSession(?ChargingSession $session, Metric $latest, ?SmsNotifier $sms = null): void
     {
         if (! $session) {
             return;
         }
 
+        $energy = $session->computeEnergyKwh();
         $session->update([
             'ended_at' => now(),
-            'energy_kwh' => $session->computeEnergyKwh(),
+            'energy_kwh' => $energy,
         ]);
+
+        $sms?->send("Charge {$session->mode->label()} terminée ({$energy} kWh)");
     }
 }

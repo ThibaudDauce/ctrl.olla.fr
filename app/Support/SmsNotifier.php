@@ -8,12 +8,14 @@ use Illuminate\Support\Facades\Log;
 
 class SmsNotifier
 {
-    public function send(string $message, string $throttleKey = 'default'): bool
+    public function send(string $message, ?string $throttleKey = null): bool
     {
-        $cacheKey = "sms_throttle:{$throttleKey}";
+        if ($throttleKey) {
+            $cacheKey = "sms_throttle:{$throttleKey}";
 
-        if (Cache::has($cacheKey)) {
-            return false;
+            if (Cache::has($cacheKey)) {
+                return false;
+            }
         }
 
         $user = config('services.free_sms.user');
@@ -37,7 +39,9 @@ class SmsNotifier
             return false;
         }
 
-        Cache::put($cacheKey, true, now()->addHour());
+        if ($throttleKey) {
+            Cache::put($cacheKey, true, now()->addHour());
+        }
 
         return true;
     }
