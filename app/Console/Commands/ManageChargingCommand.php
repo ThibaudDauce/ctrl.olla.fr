@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\ChargingSession;
 use App\Models\Metric;
 use App\Support\ChargingMode;
+use App\Support\Lektrico\ChargerInfo;
 use App\Support\Lektrico\LektricoClient;
 use App\Support\SmsNotifier;
 use Carbon\CarbonInterface;
@@ -32,22 +33,24 @@ class ManageChargingCommand extends Command
         $isCharging = $latest->charger_state->isCharging();
 
         if ($isCharging) {
-            if ($this->handleLoadShedding($latest, $charger, $session, $sms)) {
+            $chargerInfo = $charger->info();
+
+            if ($this->handleLoadShedding($latest, $charger, $chargerInfo, $session, $sms)) {
                 return;
             }
 
-            $this->updateSession($latest, $session, $charger);
+            $this->updateSession($latest, $session, $chargerInfo);
         }
 
         $this->handleOffPeak($latest, $charger, $session, $sms);
-        $this->handleSolar($latest, $charger, $session, $sms);
+        $this->handleSolar($latest, $charger, $session, $sms, $chargerInfo ?? null);
     }
 
-    private function handleLoadShedding(Metric $latest, LektricoClient $charger, ?ChargingSession $session, SmsNotifier $sms): bool
+    private function handleLoadShedding(Metric $latest, LektricoClient $charger, ChargerInfo $chargerInfo, ?ChargingSession $session, SmsNotifier $sms): bool
     {
         $phaseMaxAmps = config('charging.phase_max_amps');
         $maxPhase = max($latest->meter_current_l1, $latest->meter_current_l2, $latest->meter_current_l3);
-        $currentAmps = (int) floor($charger->info()->userPower / 230);
+        $currentAmps = (int) floor($chargerInfo->userPower / 230);
         $minAmps = config('charging.min_charge_amps');
         $maxChargeAmps = config('charging.max_charge_amps');
 
@@ -117,7 +120,7 @@ class ManageChargingCommand extends Command
         }
     }
 
-    private function handleSolar(Metric $latest, LektricoClient $charger, ?ChargingSession &$session, SmsNotifier $sms): void
+    private function handleSolar(Metric $latest, LektricoClient $charger, ?ChargingSession &$session, SmsNotifier $sms, ?ChargerInfo $chargerInfo = null): void
     {
         if ($this->isInOffPeakWindow(now())) {
             return;
@@ -169,20 +172,18 @@ class ManageChargingCommand extends Command
             }
 
             if ($recentMetrics->count() >= 3) {
+                $currentAmps = (int) floor($chargerInfo->userPower / 230);
                 $avgPower = $recentMetrics->avg('meter_power_total');
-                // Negative avgPower = surplus → increase amps, positive = consuming → decrease
-                $targetAmps = $latest->charger_current + (int) floor(-$avgPower / 230);
+                $targetAmps = $currentAmps + (int) floor(-$avgPower / 230);
                 $targetAmps = max(config('charging.min_charge_amps'), min(config('charging.max_charge_amps'), $targetAmps));
 
-                $currentAmps = $latest->charger_current;
                 if ($targetAmps !== $currentAmps) {
-                    $newAmps = $targetAmps > $currentAmps ? $currentAmps + 1 : $currentAmps - 1;
-                    Log::info("Solar: adjusting from {$currentAmps}A to {$newAmps}A");
-                    $charger->setUserPower($newAmps);
-                    $sms->send("Charge solaire : {$currentAmps}A → {$newAmps}A");
+                    Log::info("Solar: adjusting from {$currentAmps}A to {$targetAmps}A");
+                    $charger->setUserPower($targetAmps);
+                    $sms->send("Charge solaire : {$currentAmps}A → {$targetAmps}A");
 
-                    if ($newAmps > ($session->max_current ?? 0)) {
-                        $session->update(['max_current' => $newAmps]);
+                    if ($targetAmps > ($session->max_current ?? 0)) {
+                        $session->update(['max_current' => $targetAmps]);
                     }
                 }
             }
@@ -207,14 +208,15 @@ class ManageChargingCommand extends Command
         return $timeMinutes >= $startMinutes && $timeMinutes < $endMinutes;
     }
 
-    private function updateSession(Metric $latest, ?ChargingSession $session, LektricoClient $charger): void
+    private function updateSession(Metric $latest, ?ChargingSession $session, ChargerInfo $chargerInfo): void
     {
         if (! $session) {
             return;
         }
 
-        if ($latest->charger_current > ($session->max_current ?? 0)) {
-            $session->update(['max_current' => $latest->charger_current]);
+        $currentAmps = (int) floor($chargerInfo->userPower / 230);
+        if ($currentAmps > ($session->max_current ?? 0)) {
+            $session->update(['max_current' => $currentAmps]);
         }
 
         $isThreePhase = ($latest->charger_current_l2 ?? 0) > 0.5 || ($latest->charger_current_l3 ?? 0) > 0.5;

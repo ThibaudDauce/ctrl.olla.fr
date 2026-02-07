@@ -379,11 +379,8 @@ new class extends Component {
                     <flux:heading size="lg">Charge en cours</flux:heading>
                     <div class="flex gap-2">
                         <flux:badge color="green">{{ $session->mode->label() }}</flux:badge>
-                        @if (
-                            $latest->meter_current_l1 > config('charging.phase_max_amps') ||
-                                $latest->meter_current_l2 > config('charging.phase_max_amps') ||
-                                $latest->meter_current_l3 > config('charging.phase_max_amps'))
-                            <flux:badge color="red">Délestage</flux:badge>
+                        @if ($this->requestedAmps < config('charging.max_charge_amps'))
+                            <flux:badge color="red">Délestage ({{ $this->requestedAmps }}A / {{ config('charging.max_charge_amps') }}A)</flux:badge>
                         @endif
                     </div>
                 </div>

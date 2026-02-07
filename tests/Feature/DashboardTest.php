@@ -9,6 +9,8 @@ use Livewire\Livewire;
 beforeEach(function () {
     config([
         'services.lektrico.host' => '198.51.100.10',
+        'charging.min_charge_amps' => 6,
+        'charging.max_charge_amps' => 32,
     ]);
 });
 

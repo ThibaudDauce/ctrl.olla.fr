@@ -279,13 +279,16 @@ describe('solar', function () {
     });
 
     it('increases current when surplus is available during solar charge', function () {
+        // user_power at 10A, avg surplus -2000W → floor(2000/230) = +8A → target 18A
+        Http::swap(new Factory);
+        fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+
         $this->travelTo(now()->setTime(12, 0));
 
         foreach (range(0, 2) as $i) {
             Metric::factory()->charging(10)->create([
                 'recorded_at' => now()->subMinutes(2 - $i),
                 'meter_power_total' => -2000,
-                'charger_current' => 10,
                 'meter_current_l1' => 10,
                 'meter_current_l2' => 10,
                 'meter_current_l3' => 10,
@@ -303,18 +306,20 @@ describe('solar', function () {
             return $r->url() === 'http://198.51.100.10/rpc'
                 && ($r['method'] ?? null) === 'app_config.set'
                 && ($r['params']['config_key'] ?? null) === 'user_power'
-                && ($r['params']['config_value'] ?? null) === 11 * 230;
+                && ($r['params']['config_value'] ?? null) === 18 * 230;
         });
     });
 
     it('decreases current when partially consuming from grid during solar charge', function () {
+        // user_power at 10A, avg power +267W → floor(-267/230) = -2A → target 8A
+        Http::swap(new Factory);
+        fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+
         $this->travelTo(now()->setTime(12, 0));
 
-        // 2 surplus, 1 consuming → average positive (+267W) → should decrease
         Metric::factory()->charging(10)->create([
             'recorded_at' => now()->subMinutes(2),
             'meter_power_total' => -500,
-            'charger_current' => 10,
             'meter_current_l1' => 10,
             'meter_current_l2' => 10,
             'meter_current_l3' => 10,
@@ -322,7 +327,6 @@ describe('solar', function () {
         Metric::factory()->charging(10)->create([
             'recorded_at' => now()->subMinute(),
             'meter_power_total' => -200,
-            'charger_current' => 10,
             'meter_current_l1' => 10,
             'meter_current_l2' => 10,
             'meter_current_l3' => 10,
@@ -330,7 +334,6 @@ describe('solar', function () {
         Metric::factory()->charging(10)->create([
             'recorded_at' => now(),
             'meter_power_total' => 1500,
-            'charger_current' => 10,
             'meter_current_l1' => 10,
             'meter_current_l2' => 10,
             'meter_current_l3' => 10,
@@ -347,7 +350,7 @@ describe('solar', function () {
             return $r->url() === 'http://198.51.100.10/rpc'
                 && ($r['method'] ?? null) === 'app_config.set'
                 && ($r['params']['config_key'] ?? null) === 'user_power'
-                && ($r['params']['config_value'] ?? null) === 9 * 230;
+                && ($r['params']['config_value'] ?? null) === 8 * 230;
         });
     });
 
