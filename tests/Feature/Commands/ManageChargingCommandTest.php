@@ -5,6 +5,7 @@ use App\Models\ChargingSession;
 use App\Models\Metric;
 use App\Support\ChargingMode;
 use App\Support\Lektrico\ChargerState;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -133,6 +134,7 @@ describe('off-peak', function () {
 describe('load shedding', function () {
     it('reduces current based on phase overage', function () {
         // L1 at 22A, max 20A → overage 2A → 16A - 2A = 14A
+        Http::swap(new Factory);
         fakeLektricoResponses(['app_config' => ['user_power' => 16 * 230]]);
 
         Metric::factory()->charging(16)->create([
@@ -155,6 +157,7 @@ describe('load shedding', function () {
 
     it('stops charge when overage would go below minimum amps', function () {
         // L1 at 25A, max 20A → overage 5A → 8A - 5A = 3A < 6A min → stop
+        Http::swap(new Factory);
         fakeLektricoResponses(['app_config' => ['user_power' => 8 * 230]]);
 
         Metric::factory()->charging(8)->create([
@@ -175,6 +178,7 @@ describe('load shedding', function () {
 
     it('recovers amps when phases have headroom after load shedding', function () {
         // All phases at 15A, max 20A → headroom 5A → 20A + 5A = 25A
+        Http::swap(new Factory);
         fakeLektricoResponses(['app_config' => ['user_power' => 20 * 230]]);
 
         Metric::factory()->charging(20)->create([
@@ -199,6 +203,7 @@ describe('load shedding', function () {
 
     it('does not recover beyond max charge amps', function () {
         // All phases at 10A, max 20A → headroom 10A → 28A + 10A = 38A, capped at 32A
+        Http::swap(new Factory);
         fakeLektricoResponses(['app_config' => ['user_power' => 28 * 230]]);
 
         Metric::factory()->charging(28)->create([

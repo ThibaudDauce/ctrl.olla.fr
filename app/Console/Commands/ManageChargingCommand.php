@@ -79,6 +79,7 @@ class ManageChargingCommand extends Command
             if ($targetAmps > $currentAmps) {
                 Log::info("Load shedding recovery: increasing from {$currentAmps}A to {$targetAmps}A");
                 $charger->setUserPower($targetAmps);
+                $sms->send("Délestage récupération : {$currentAmps}A → {$targetAmps}A");
             }
         }
 
