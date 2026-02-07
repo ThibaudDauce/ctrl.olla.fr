@@ -4,14 +4,12 @@ use App\Models\ChargingSession;
 use App\Models\Metric;
 use App\Support\ChargingMode;
 use App\Support\Envoy\EnvoyClient;
-use App\Support\Lektrico\ChargerState;
 use App\Support\Lektrico\LektricoClient;
 use App\Support\Meter\MeterClient;
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Dashboard')] class extends Component {
+new class extends Component {
     public ?int $requestedAmps = null;
 
     public function mount(): void
@@ -30,22 +28,38 @@ new #[Title('Dashboard')] class extends Component {
     }
 
     #[Computed]
-    public function liveMeter(): float
+    public function liveMeter(): array
     {
         try {
-            return config('services.meter.host') ? MeterClient::make()->info()->totalActivePower : 0;
+            if (!config('services.meter.host')) {
+                return ['total' => 0, 'phases' => [0, 0, 0]];
+            }
+            $info = MeterClient::make()->info();
+
+            return [
+                'total' => $info->totalActivePower,
+                'phases' => $info->activePowerPerPhase,
+            ];
         } catch (\Throwable) {
-            return 0;
+            return ['total' => 0, 'phases' => [0, 0, 0]];
         }
     }
 
     #[Computed]
-    public function liveCharger(): float
+    public function liveCharger(): array
     {
         try {
-            return config('services.lektrico.host') ? LektricoClient::make()->info()->instantPower : 0;
+            if (!config('services.lektrico.host')) {
+                return ['total' => 0, 'phases' => [0, 0, 0]];
+            }
+            $info = LektricoClient::make()->info();
+
+            return [
+                'total' => $info->instantPower,
+                'phases' => array_map(fn(float $c, float $v) => round($c * $v), $info->currents, $info->voltages),
+            ];
         } catch (\Throwable) {
-            return 0;
+            return ['total' => 0, 'phases' => [0, 0, 0]];
         }
     }
 
@@ -214,9 +228,18 @@ new #[Title('Dashboard')] class extends Component {
             @endplaceholder
 
             <flux:card class="relative overflow-hidden h-[8.5rem]" wire:poll.3s>
-                <flux:text>{{ $this->liveMeter >= 0 ? 'Consommation réseau' : 'Injection réseau' }}</flux:text>
-                <flux:heading size="xl" class="mt-2 tabular-nums">
-                    {{ number_format(abs($this->liveMeter), 0, ',', "\u{202f}") }} W</flux:heading>
+                <flux:text>{{ $this->liveMeter['total'] >= 0 ? 'Consommation réseau' : 'Injection réseau' }}</flux:text>
+                <flux:tooltip position="bottom" toggleable>
+                    <flux:heading size="xl" class="mt-2 tabular-nums">
+                        {{ number_format(abs($this->liveMeter['total']), 0, ',', "\u{202f}") }} W</flux:heading>
+                    <flux:tooltip.content>
+                        <div class="tabular-nums space-y-0.5">
+                            <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W</div>
+                            <div>L2 : {{ number_format(abs($this->liveMeter['phases'][1]), 0, ',', "\u{202f}") }} W</div>
+                            <div>L3 : {{ number_format(abs($this->liveMeter['phases'][2]), 0, ',', "\u{202f}") }} W</div>
+                        </div>
+                    </flux:tooltip.content>
+                </flux:tooltip>
                 @if (count($this->meterSparkline) > 1)
                     <flux:chart class="absolute -bottom-1.5 -inset-x-2 h-[3rem]" :value="$this->meterSparkline">
                         <flux:chart.svg gutter="0">
@@ -241,8 +264,17 @@ new #[Title('Dashboard')] class extends Component {
 
             <flux:card class="relative overflow-hidden h-[8.5rem]" wire:poll.3s>
                 <flux:text>Charge véhicule</flux:text>
-                <flux:heading size="xl" class="mt-2 tabular-nums">
-                    {{ number_format($this->liveCharger, 0, ',', "\u{202f}") }} W</flux:heading>
+                <flux:tooltip position="bottom" toggleable>
+                    <flux:heading size="xl" class="mt-2 tabular-nums">
+                        {{ number_format($this->liveCharger['total'], 0, ',', "\u{202f}") }} W</flux:heading>
+                    <flux:tooltip.content>
+                        <div class="tabular-nums space-y-0.5">
+                            <div>L1 : {{ number_format($this->liveCharger['phases'][0], 0, ',', "\u{202f}") }} W</div>
+                            <div>L2 : {{ number_format($this->liveCharger['phases'][1], 0, ',', "\u{202f}") }} W</div>
+                            <div>L3 : {{ number_format($this->liveCharger['phases'][2], 0, ',', "\u{202f}") }} W</div>
+                        </div>
+                    </flux:tooltip.content>
+                </flux:tooltip>
                 @if (count($this->chargerSparkline) > 1)
                     <flux:chart class="absolute -bottom-1.5 -inset-x-2 h-[3rem]" :value="$this->chargerSparkline">
                         <flux:chart.svg gutter="0">
@@ -359,7 +391,8 @@ new #[Title('Dashboard')] class extends Component {
                     </div>
                     <div>
                         <flux:text class="text-zinc-500 text-sm">Énergie</flux:text>
-                        <flux:heading size="lg">{{ number_format($session->computeEnergyKwh(), 1, ',', ' ') }} kWh</flux:heading>
+                        <flux:heading size="lg">{{ number_format($session->computeEnergyKwh(), 1, ',', ' ') }} kWh
+                        </flux:heading>
                     </div>
                 </div>
 
@@ -382,7 +415,8 @@ new #[Title('Dashboard')] class extends Component {
                 <div class="mt-4">
                     <flux:text class="text-sm text-zinc-500 mb-2">Ampérage : <span
                             x-text="$wire.requestedAmps + 'A'">{{ $this->requestedAmps }}A</span></flux:text>
-                    <flux:slider wire:model.live.debounce.500ms="requestedAmps" min="6" max="32" step="1">
+                    <flux:slider wire:model.live.debounce.500ms="requestedAmps" min="6" max="32"
+                        step="1">
                         @for ($a = 6; $a <= 32; $a++)
                             <flux:slider.tick :value="$a">{{ $a % 2 === 0 ? $a : '' }}</flux:slider.tick>
                         @endfor
