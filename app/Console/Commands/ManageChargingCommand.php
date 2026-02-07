@@ -76,11 +76,9 @@ class ManageChargingCommand extends Command
 
     private function handleOffPeak(Metric $latest, LektricoClient $charger, ?ChargingSession &$session, SmsNotifier $sms): void
     {
-        $wasInOffPeak = $this->isInOffPeakWindow(now()->subMinute());
         $isInOffPeak = $this->isInOffPeakWindow(now());
 
-        // Entering off-peak
-        if ($isInOffPeak && ! $wasInOffPeak && $latest->charger_state->isConnectable()) {
+        if ($isInOffPeak && ! $session && $latest->charger_state->isConnectable()) {
             $amps = config('charging.max_charge_amps');
             Log::info('Off-peak: starting charge');
             $charger->setUserPower($amps);
@@ -96,7 +94,7 @@ class ManageChargingCommand extends Command
         }
 
         // Leaving off-peak
-        if (! $isInOffPeak && $wasInOffPeak && $latest->charger_state->isCharging()) {
+        if (! $isInOffPeak && $latest->charger_state->isCharging()) {
             if ($session?->mode === ChargingMode::Solar) {
                 return;
             }

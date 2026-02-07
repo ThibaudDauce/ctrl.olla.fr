@@ -69,6 +69,26 @@ describe('off-peak', function () {
         Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.start');
     });
 
+    it('starts charging when car is plugged in during off-peak window', function () {
+        $this->travelTo(now()->setTime(23, 30));
+
+        Metric::factory()->create([
+            'charger_state' => ChargerState::NeedAuth,
+            'meter_current_l1' => 5,
+            'meter_current_l2' => 5,
+            'meter_current_l3' => 5,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        $session = ChargingSession::query()->first();
+        expect($session)->not->toBeNull()
+            ->and($session->mode)->toBe(ChargingMode::OffPeak)
+            ->and($session->ended_at)->toBeNull();
+
+        Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.start');
+    });
+
     it('stops charging when leaving off-peak window', function () {
         $this->travelTo(now()->setTime(5, 55));
 
