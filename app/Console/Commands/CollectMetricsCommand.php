@@ -8,7 +8,6 @@ use App\Support\Lektrico\LektricoClient;
 use App\Support\Meter\MeterClient;
 use App\Support\SmsNotifier;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class CollectMetricsCommand extends Command
@@ -44,7 +43,7 @@ class CollectMetricsCommand extends Command
             $data['meter_current_l2'] = $info->currentPerPhase[1] ?? null;
             $data['meter_current_l3'] = $info->currentPerPhase[2] ?? null;
         } catch (Throwable $e) {
-            Log::error('Meter collection failed', ['error' => $e->getMessage()]);
+            report($e);
             $sms->send("Erreur meter: {$e->getMessage()}", 'device_meter');
         }
     }
@@ -61,7 +60,7 @@ class CollectMetricsCommand extends Command
 
             $data['solar_power'] = $production->wattsNow;
         } catch (Throwable $e) {
-            Log::error('Solar collection failed', ['error' => $e->getMessage()]);
+            report($e);
             $sms->send("Erreur Envoy: {$e->getMessage()}", 'device_envoy');
         }
     }
@@ -78,7 +77,7 @@ class CollectMetricsCommand extends Command
             $data['charger_current_l2'] = $info->currents[1] ?? null;
             $data['charger_current_l3'] = $info->currents[2] ?? null;
         } catch (Throwable $e) {
-            Log::error('Charger collection failed', ['error' => $e->getMessage()]);
+            report($e);
             $sms->send("Erreur borne: {$e->getMessage()}", 'device_charger');
         }
     }

@@ -18,10 +18,15 @@ class EnvoyClient
 
     public function production(): ProductionInfo
     {
-        $data = Http::withoutVerifying()
+        $response = Http::withoutVerifying()
             ->withToken($this->token)
-            ->get("https://{$this->host}/api/v1/production")
-            ->json();
+            ->get("https://{$this->host}/api/v1/production");
+
+        $data = $response->json();
+
+        if (! is_array($data) || ! isset($data['wattsNow'], $data['wattHoursToday'])) {
+            throw new \RuntimeException("Réponse Envoy invalide (HTTP {$response->status()}): {$response->body()}");
+        }
 
         return new ProductionInfo(
             wattsNow: $data['wattsNow'],
