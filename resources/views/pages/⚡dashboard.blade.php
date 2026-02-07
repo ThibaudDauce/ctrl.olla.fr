@@ -236,9 +236,12 @@ new class extends Component {
                         <flux:button icon="square-3-stack-3d" size="sm" variant="ghost" />
                         <flux:tooltip.content>
                             <div class="tabular-nums space-y-0.5">
-                                <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W</div>
-                                <div>L2 : {{ number_format(abs($this->liveMeter['phases'][1]), 0, ',', "\u{202f}") }} W</div>
-                                <div>L3 : {{ number_format(abs($this->liveMeter['phases'][2]), 0, ',', "\u{202f}") }} W</div>
+                                <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W
+                                </div>
+                                <div>L2 : {{ number_format(abs($this->liveMeter['phases'][1]), 0, ',', "\u{202f}") }} W
+                                </div>
+                                <div>L3 : {{ number_format(abs($this->liveMeter['phases'][2]), 0, ',', "\u{202f}") }} W
+                                </div>
                             </div>
                         </flux:tooltip.content>
                     </flux:tooltip>
@@ -302,14 +305,14 @@ new class extends Component {
                         {{-- Ordre de peinture SVG : vert (fond) → bleu (milieu) → jaune (dessus) --}}
                         {{-- Import : jaune couvre la base bleue, bleu visible au-dessus = import réseau --}}
                         {{-- Injection : bleu couvre la base verte, vert visible au-dessus = injection --}}
-                        <flux:chart.area field="production" class="text-lime-100 dark:text-lime-400/25" />
+                        <flux:chart.area field="production" class="text-lime-200 dark:text-lime-400/25" />
 
                         <flux:chart.area field="consumption" class="text-blue-100 dark:text-blue-400/25" />
-                        <flux:chart.line field="consumption" class="text-blue-500 dark:text-blue-400" />
+                        <flux:chart.line field="consumption" class="text-blue-500/70 dark:text-blue-400/70" />
 
                         <flux:chart.area field="solar_contrib" class="text-amber-200 dark:text-amber-400/40" />
 
-                        <flux:chart.line field="production" class="text-amber-500 dark:text-amber-400" />
+                        <flux:chart.line field="production" class="text-amber-500/70 dark:text-amber-400/70" />
 
                         <flux:chart.axis axis="x" field="time" scale="time"
                             :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]">
@@ -328,8 +331,10 @@ new class extends Component {
                 <flux:chart.tooltip>
                     <flux:chart.tooltip.heading field="time"
                         :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]" />
-                    <flux:chart.tooltip.value field="consumption" label="Consommation" suffix=" W" :format="['maximumFractionDigits' => 0]" />
-                    <flux:chart.tooltip.value field="production" label="Production solaire" suffix=" W" :format="['maximumFractionDigits' => 0]" />
+                    <flux:chart.tooltip.value field="consumption" label="Consommation" suffix=" W"
+                        :format="['maximumFractionDigits' => 0]" />
+                    <flux:chart.tooltip.value field="production" label="Production solaire" suffix=" W"
+                        :format="['maximumFractionDigits' => 0]" />
                 </flux:chart.tooltip>
 
                 <div class="flex justify-center gap-4 pt-4">
