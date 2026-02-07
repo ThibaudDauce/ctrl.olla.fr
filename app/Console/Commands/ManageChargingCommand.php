@@ -216,19 +216,7 @@ class ManageChargingCommand extends Command
 
         $session->update([
             'ended_at' => now(),
-            'energy_kwh' => $this->getSessionEnergy($session),
+            'energy_kwh' => $session->computeEnergyKwh(),
         ]);
-    }
-
-    private function getSessionEnergy(ChargingSession $session): float
-    {
-        $metrics = Metric::query()
-            ->where('recorded_at', '>=', $session->started_at)
-            ->whereNotNull('charger_power')
-            ->orderBy('recorded_at')
-            ->get();
-
-        // Each metric represents ~1 minute, power in watts → kWh = W * (1/60) / 1000
-        return $metrics->sum(fn (Metric $m) => $m->charger_power / 60 / 1000);
     }
 }

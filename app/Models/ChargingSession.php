@@ -22,4 +22,13 @@ class ChargingSession extends Model
             'is_three_phase' => 'boolean',
         ];
     }
+
+    public function computeEnergyKwh(): float
+    {
+        return Metric::query()
+            ->where('recorded_at', '>=', $this->started_at)
+            ->whereNotNull('charger_power')
+            ->get()
+            ->sum(fn (Metric $m) => $m->charger_power / 60 / 1000);
+    }
 }

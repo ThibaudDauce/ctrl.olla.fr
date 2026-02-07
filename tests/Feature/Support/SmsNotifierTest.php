@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\SmsNotifier;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -8,13 +9,13 @@ beforeEach(function () {
         'services.free_sms.user' => 'test-user',
         'services.free_sms.key' => 'test-key',
     ]);
-
-    Http::fake([
-        'smsapi.free-mobile.fr/*' => Http::response('', 200),
-    ]);
 });
 
 it('sends an SMS', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
     $notifier = new SmsNotifier;
     $result = $notifier->send('Test message');
 
@@ -29,6 +30,10 @@ it('sends an SMS', function () {
 });
 
 it('throttles SMS with the same key', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
     $notifier = new SmsNotifier;
 
     $first = $notifier->send('First', 'same-key');
@@ -41,6 +46,10 @@ it('throttles SMS with the same key', function () {
 });
 
 it('allows SMS with different keys', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
     $notifier = new SmsNotifier;
 
     $first = $notifier->send('First', 'key-1');
@@ -52,7 +61,37 @@ it('allows SMS with different keys', function () {
     Http::assertSentCount(2);
 });
 
+it('does not throttle when HTTP request fails', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 500),
+    ]);
+
+    $notifier = new SmsNotifier;
+    $result = $notifier->send('Test', 'fail-key');
+
+    expect($result)->toBeFalse();
+    expect(Cache::has('sms_throttle:fail-key'))->toBeFalse();
+});
+
+it('can retry after a failed send', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::sequence()
+            ->push('', 500)
+            ->push('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    $first = $notifier->send('First', 'retry-key');
+    expect($first)->toBeFalse();
+
+    $second = $notifier->send('Retry', 'retry-key');
+    expect($second)->toBeTrue();
+});
+
 it('returns false when not configured', function () {
+    Http::fake();
+
     config([
         'services.free_sms.user' => null,
         'services.free_sms.key' => null,

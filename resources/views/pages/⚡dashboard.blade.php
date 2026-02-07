@@ -80,6 +80,11 @@ new #[Title('Dashboard')] class extends Component {
         return array_pad($values->values()->all(), 1440, null);
     }
 
+    private function clampCurrent(int $value): int
+    {
+        return max(config('charging.min_charge_amps'), min(config('charging.max_charge_amps'), $value));
+    }
+
     #[Computed]
     public function hasMetrics(): bool
     {
@@ -128,6 +133,8 @@ new #[Title('Dashboard')] class extends Component {
 
     public function startCharge(): void
     {
+        $this->currentSlider = $this->clampCurrent($this->currentSlider);
+
         $charger = new LektricoClient(config('services.lektrico.host'));
         $charger->setUserCurrent($this->currentSlider);
         $charger->start();
@@ -148,19 +155,19 @@ new #[Title('Dashboard')] class extends Component {
 
         $session = $this->activeSession;
         if ($session) {
-            $energy = Metric::query()->where('recorded_at', '>=', $session->started_at)->whereNotNull('charger_power')->get()->sum(fn(Metric $m) => $m->charger_power / 60 / 1000);
-
             $session->update([
                 'ended_at' => now(),
-                'energy_kwh' => $energy,
+                'energy_kwh' => $session->computeEnergyKwh(),
             ]);
         }
 
         unset($this->latest, $this->activeSession);
     }
 
-    public function setCurrent(): void
+    public function updatedCurrentSlider(): void
     {
+        $this->currentSlider = $this->clampCurrent($this->currentSlider);
+
         $charger = new LektricoClient(config('services.lektrico.host'));
         $charger->setUserCurrent($this->currentSlider);
 
@@ -354,15 +361,8 @@ new #[Title('Dashboard')] class extends Component {
                         </flux:heading>
                     </div>
                     <div>
-                        @php
-                            $energy = \App\Models\Metric::query()
-                                ->where('recorded_at', '>=', $session->started_at)
-                                ->whereNotNull('charger_power')
-                                ->get()
-                                ->sum(fn($m) => $m->charger_power / 60 / 1000);
-                        @endphp
                         <flux:text class="text-zinc-500 text-sm">Énergie</flux:text>
-                        <flux:heading size="lg">{{ number_format($energy, 1, ',', ' ') }} kWh</flux:heading>
+                        <flux:heading size="lg">{{ number_format($session->computeEnergyKwh(), 1, ',', ' ') }} kWh</flux:heading>
                     </div>
                 </div>
 
@@ -385,11 +385,11 @@ new #[Title('Dashboard')] class extends Component {
                 <div class="mt-4">
                     <flux:text class="text-sm text-zinc-500 mb-2">Ampérage : <span
                             x-text="$wire.currentSlider + 'A'">{{ $this->currentSlider }}A</span></flux:text>
-                    <div class="flex items-center gap-4">
-                        <flux:slider wire:model.live="currentSlider" min="6" max="32" step="1"
-                            class="flex-1" />
-                        <flux:button wire:click="setCurrent" size="sm">Appliquer</flux:button>
-                    </div>
+                    <flux:slider wire:model.live.debounce.500ms="currentSlider" min="6" max="32" step="1">
+                        @for ($a = 6; $a <= 32; $a++)
+                            <flux:slider.tick :value="$a">{{ $a % 2 === 0 ? $a : '' }}</flux:slider.tick>
+                        @endfor
+                    </flux:slider>
                 </div>
             </flux:card>
         @endif

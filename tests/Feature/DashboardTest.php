@@ -91,6 +91,39 @@ it('can start a manual charge', function () {
         ->and($session->max_current)->toBe(20);
 });
 
+it('clamps currentSlider to valid range on start', function () {
+    Metric::factory()->create([
+        'recorded_at' => now(),
+        'charger_state' => ChargerState::NeedAuth,
+    ]);
+
+    fakeLektricoResponses();
+
+    Livewire::test('pages::dashboard')
+        ->set('currentSlider', 100)
+        ->call('startCharge');
+
+    $session = ChargingSession::query()->first();
+    expect($session)->not->toBeNull()
+        ->and($session->max_current)->toBe(32);
+});
+
+it('clamps currentSlider to minimum on update', function () {
+    Metric::factory()->charging()->create(['recorded_at' => now()]);
+    ChargingSession::factory()->active()->create(['max_current' => 16]);
+
+    fakeLektricoResponses();
+
+    Livewire::test('pages::dashboard')
+        ->set('currentSlider', 1);
+
+    Http::assertSent(function ($r) {
+        return $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['method'] ?? null) === 'app_config.set'
+            && ($r['params']['config_value'] ?? null) === 6;
+    });
+});
+
 it('can stop a charge', function () {
     Metric::factory()->charging()->create(['recorded_at' => now()]);
     ChargingSession::factory()->active()->create();

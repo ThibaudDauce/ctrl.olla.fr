@@ -25,11 +25,17 @@ class SmsNotifier
             return false;
         }
 
-        Http::get('https://smsapi.free-mobile.fr/sendmsg', [
+        $response = Http::get('https://smsapi.free-mobile.fr/sendmsg', [
             'user' => $user,
             'pass' => $key,
             'msg' => $message,
         ]);
+
+        if ($response->failed()) {
+            Log::warning('SMS send failed', ['status' => $response->status(), 'message' => $message]);
+
+            return false;
+        }
 
         Cache::put($cacheKey, true, now()->addHour());
 
