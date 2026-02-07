@@ -82,8 +82,11 @@ it('can start a manual charge', function () {
     fakeLektricoResponses();
 
     Livewire::test('pages::dashboard')
+        ->assertSet('requestedAmps', 32)
         ->set('requestedAmps', 20)
-        ->call('startCharge');
+        ->assertSet('requestedAmps', 20)
+        ->call('startCharge')
+        ->assertSet('requestedAmps', 20);
 
     $session = ChargingSession::query()->first();
     expect($session)->not->toBeNull()
