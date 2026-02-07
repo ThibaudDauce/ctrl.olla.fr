@@ -68,7 +68,7 @@ class ManageChargingCommand extends Command
 
         $newAmps = $currentAmps - 1;
         Log::info("Load shedding: reducing from {$currentAmps}A to {$newAmps}A");
-        $charger->setUserCurrent($newAmps);
+        $charger->setDynamicCurrent($newAmps);
         $sms->send("Délestage : {$currentAmps}A → {$newAmps}A");
 
         return true;
@@ -83,7 +83,7 @@ class ManageChargingCommand extends Command
         if ($isInOffPeak && ! $wasInOffPeak && $latest->charger_state->isConnectable()) {
             $amps = config('charging.max_charge_amps');
             Log::info('Off-peak: starting charge');
-            $charger->setUserCurrent($amps);
+            $charger->setDynamicCurrent($amps);
             $charger->start();
             $session = ChargingSession::query()->create([
                 'started_at' => now(),
@@ -132,7 +132,7 @@ class ManageChargingCommand extends Command
                 $amps = min(config('charging.max_charge_amps'), max($minAmps, (int) floor($avgSurplus / 230)));
 
                 Log::info("Solar: starting charge at {$amps}A");
-                $charger->setUserCurrent($amps);
+                $charger->setDynamicCurrent($amps);
                 $charger->start();
                 $session = ChargingSession::query()->create([
                     'started_at' => now(),
@@ -168,7 +168,7 @@ class ManageChargingCommand extends Command
                 if ($targetAmps !== $currentAmps) {
                     $newAmps = $targetAmps > $currentAmps ? $currentAmps + 1 : $currentAmps - 1;
                     Log::info("Solar: adjusting from {$currentAmps}A to {$newAmps}A");
-                    $charger->setUserCurrent($newAmps);
+                    $charger->setDynamicCurrent($newAmps);
                     $sms->send("Charge solaire : {$currentAmps}A → {$newAmps}A");
 
                     if ($newAmps > ($session->max_current ?? 0)) {

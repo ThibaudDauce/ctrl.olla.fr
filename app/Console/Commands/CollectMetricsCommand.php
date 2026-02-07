@@ -73,7 +73,7 @@ class CollectMetricsCommand extends Command
 
             $data['charger_state'] = $info->state;
             $data['charger_power'] = $info->instantPower;
-            $data['charger_current'] = $info->requestedCurrent;
+            $data['charger_current'] = $info->dynamicCurrent;
             $data['charger_current_l1'] = $info->currents[0] ?? null;
             $data['charger_current_l2'] = $info->currents[1] ?? null;
             $data['charger_current_l3'] = $info->currents[2] ?? null;

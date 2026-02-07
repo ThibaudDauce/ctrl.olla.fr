@@ -11,7 +11,7 @@ class ChargerInfo
     public function __construct(
         public ChargerState $state,
         public float $instantPower,
-        public int $requestedCurrent,
+        public int $dynamicCurrent,
         public int $chargingTime,
         public float $sessionEnergy,
         public array $currents,

@@ -143,7 +143,7 @@ new class extends Component {
         $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
         $charger = LektricoClient::make();
-        $charger->setUserCurrent($this->requestedAmps);
+        $charger->setDynamicCurrent($this->requestedAmps);
         $charger->start();
 
         ChargingSession::query()->create([
@@ -174,7 +174,7 @@ new class extends Component {
     {
         $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
-        LektricoClient::make()->setUserCurrent($this->requestedAmps);
+        LektricoClient::make()->setDynamicCurrent($this->requestedAmps);
 
         $session = $this->activeSession;
         if ($session && $this->requestedAmps > $session->max_current) {

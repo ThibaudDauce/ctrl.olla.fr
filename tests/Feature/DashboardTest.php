@@ -119,8 +119,8 @@ it('clamps requestedAmps to minimum on update', function () {
 
     Http::assertSent(function ($r) {
         return $r->url() === 'http://198.51.100.10/rpc'
-            && ($r['method'] ?? null) === 'app_config.set'
-            && ($r['params']['config_value'] ?? null) === 6;
+            && ($r['method'] ?? null) === 'dynamic_current.set'
+            && ($r['params']['dynamic_current'] ?? null) === 6;
     });
 });
 
