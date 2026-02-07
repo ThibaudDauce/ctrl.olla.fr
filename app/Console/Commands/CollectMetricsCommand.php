@@ -34,8 +34,7 @@ class CollectMetricsCommand extends Command
     private function collectMeter(array &$data, SmsNotifier $sms): void
     {
         try {
-            $meter = new MeterClient(config('services.meter.host'));
-            $info = $meter->info();
+            $info = MeterClient::make()->info();
 
             $data['meter_power_total'] = $info->totalActivePower;
             $data['meter_power_l1'] = $info->activePowerPerPhase[0] ?? null;
@@ -58,8 +57,7 @@ class CollectMetricsCommand extends Command
                 return;
             }
 
-            $envoy = new EnvoyClient(config('services.envoy.host'), $token);
-            $production = $envoy->production();
+            $production = EnvoyClient::make()->production();
 
             $data['solar_power'] = $production->wattsNow;
         } catch (Throwable $e) {
@@ -71,8 +69,7 @@ class CollectMetricsCommand extends Command
     private function collectCharger(array &$data, SmsNotifier $sms): void
     {
         try {
-            $charger = new LektricoClient(config('services.lektrico.host'));
-            $info = $charger->info();
+            $info = LektricoClient::make()->info();
 
             $data['charger_state'] = $info->state;
             $data['charger_power'] = $info->instantPower;

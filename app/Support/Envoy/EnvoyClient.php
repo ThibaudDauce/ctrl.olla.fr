@@ -11,6 +11,11 @@ class EnvoyClient
         public string $token,
     ) {}
 
+    public static function make(): static
+    {
+        return new static(config('services.envoy.host'), config('services.envoy.token'));
+    }
+
     public function production(): ProductionInfo
     {
         $data = Http::withoutVerifying()

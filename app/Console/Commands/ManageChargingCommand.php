@@ -27,7 +27,7 @@ class ManageChargingCommand extends Command
             return;
         }
 
-        $charger = new LektricoClient(config('services.lektrico.host'));
+        $charger = LektricoClient::make();
         $session = ChargingSession::query()->whereNull('ended_at')->latest('started_at')->first();
         $isCharging = $latest->charger_state->isCharging();
 

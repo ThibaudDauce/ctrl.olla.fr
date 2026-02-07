@@ -8,6 +8,11 @@ class LektricoClient
 {
     public function __construct(public string $host) {}
 
+    public static function make(): static
+    {
+        return new static(config('services.lektrico.host'));
+    }
+
     public function info(): ChargerInfo
     {
         $info = Http::get("http://{$this->host}/rpc/charger_info.get")->json();

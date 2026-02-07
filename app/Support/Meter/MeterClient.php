@@ -8,6 +8,11 @@ class MeterClient
 {
     public function __construct(public string $host) {}
 
+    public static function make(): static
+    {
+        return new static(config('services.meter.host'));
+    }
+
     public function info(): MeterInfo
     {
         $data = Http::get("http://{$this->host}/rpc/Meter_info.Get")->json();

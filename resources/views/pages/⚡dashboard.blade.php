@@ -12,16 +12,18 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Dashboard')] class extends Component {
-    public int $currentSlider = 16;
+    public ?int $requestedAmps = null;
+
+    public function mount(): void
+    {
+        $this->requestedAmps = $this->latest?->charger_current;
+    }
 
     #[Computed]
     public function liveSolar(): float
     {
         try {
-            $host = config('services.envoy.host');
-            $token = config('services.envoy.token');
-
-            return $host && $token ? new EnvoyClient($host, $token)->production()->wattsNow : 0;
+            return config('services.envoy.token') ? EnvoyClient::make()->production()->wattsNow : 0;
         } catch (\Throwable) {
             return 0;
         }
@@ -31,9 +33,7 @@ new #[Title('Dashboard')] class extends Component {
     public function liveMeter(): float
     {
         try {
-            $host = config('services.meter.host');
-
-            return $host ? new MeterClient($host)->info()->totalActivePower : 0;
+            return config('services.meter.host') ? MeterClient::make()->info()->totalActivePower : 0;
         } catch (\Throwable) {
             return 0;
         }
@@ -43,9 +43,7 @@ new #[Title('Dashboard')] class extends Component {
     public function liveCharger(): float
     {
         try {
-            $host = config('services.lektrico.host');
-
-            return $host ? new LektricoClient($host)->info()->instantPower : 0;
+            return config('services.lektrico.host') ? LektricoClient::make()->info()->instantPower : 0;
         } catch (\Throwable) {
             return 0;
         }
@@ -133,16 +131,16 @@ new #[Title('Dashboard')] class extends Component {
 
     public function startCharge(): void
     {
-        $this->currentSlider = $this->clampCurrent($this->currentSlider);
+        $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
-        $charger = new LektricoClient(config('services.lektrico.host'));
-        $charger->setUserCurrent($this->currentSlider);
+        $charger = LektricoClient::make();
+        $charger->setUserCurrent($this->requestedAmps);
         $charger->start();
 
         ChargingSession::query()->create([
             'started_at' => now(),
             'mode' => ChargingMode::Manual,
-            'max_current' => $this->currentSlider,
+            'max_current' => $this->requestedAmps,
         ]);
 
         unset($this->latest, $this->activeSession);
@@ -150,8 +148,7 @@ new #[Title('Dashboard')] class extends Component {
 
     public function stopCharge(): void
     {
-        $charger = new LektricoClient(config('services.lektrico.host'));
-        $charger->stop();
+        LektricoClient::make()->stop();
 
         $session = $this->activeSession;
         if ($session) {
@@ -164,16 +161,15 @@ new #[Title('Dashboard')] class extends Component {
         unset($this->latest, $this->activeSession);
     }
 
-    public function updatedCurrentSlider(): void
+    public function updatedRequestedAmps(): void
     {
-        $this->currentSlider = $this->clampCurrent($this->currentSlider);
+        $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
-        $charger = new LektricoClient(config('services.lektrico.host'));
-        $charger->setUserCurrent($this->currentSlider);
+        LektricoClient::make()->setUserCurrent($this->requestedAmps);
 
         $session = $this->activeSession;
-        if ($session && $this->currentSlider > $session->max_current) {
-            $session->update(['max_current' => $this->currentSlider]);
+        if ($session && $this->requestedAmps > $session->max_current) {
+            $session->update(['max_current' => $this->requestedAmps]);
         }
 
         unset($this->latest);
@@ -384,8 +380,8 @@ new #[Title('Dashboard')] class extends Component {
 
                 <div class="mt-4">
                     <flux:text class="text-sm text-zinc-500 mb-2">Ampérage : <span
-                            x-text="$wire.currentSlider + 'A'">{{ $this->currentSlider }}A</span></flux:text>
-                    <flux:slider wire:model.live.debounce.500ms="currentSlider" min="6" max="32" step="1">
+                            x-text="$wire.requestedAmps + 'A'">{{ $this->requestedAmps }}A</span></flux:text>
+                    <flux:slider wire:model.live.debounce.500ms="requestedAmps" min="6" max="32" step="1">
                         @for ($a = 6; $a <= 32; $a++)
                             <flux:slider.tick :value="$a">{{ $a % 2 === 0 ? $a : '' }}</flux:slider.tick>
                         @endfor
