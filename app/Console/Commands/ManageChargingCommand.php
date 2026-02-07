@@ -54,7 +54,7 @@ class ManageChargingCommand extends Command
             return false;
         }
 
-        $currentAmps = $latest->charger_current;
+        $currentAmps = (int) floor($charger->info()->userPower / 230);
         $minAmps = config('charging.min_charge_amps');
 
         if ($currentAmps <= $minAmps) {
