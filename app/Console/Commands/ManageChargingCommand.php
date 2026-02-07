@@ -156,7 +156,8 @@ class ManageChargingCommand extends Command
 
             if ($recentMetrics->count() >= 3) {
                 $avgPower = $recentMetrics->avg('meter_power_total');
-                $targetAmps = (int) floor(abs($avgPower) / 230) + $latest->charger_current;
+                // Negative avgPower = surplus → increase amps, positive = consuming → decrease
+                $targetAmps = $latest->charger_current + (int) floor(-$avgPower / 230);
                 $targetAmps = max(config('charging.min_charge_amps'), min(config('charging.max_charge_amps'), $targetAmps));
 
                 $currentAmps = $latest->charger_current;

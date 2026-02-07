@@ -199,6 +199,77 @@ describe('solar', function () {
         Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.stop');
     });
 
+    it('increases current when surplus is available during solar charge', function () {
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(10)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -2000,
+                'charger_current' => 10,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 10,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(function ($r) {
+            return $r->url() === 'http://198.51.100.10/rpc'
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_value'] ?? null) === 11;
+        });
+    });
+
+    it('decreases current when partially consuming from grid during solar charge', function () {
+        $this->travelTo(now()->setTime(12, 0));
+
+        // 2 surplus, 1 consuming → average positive (+267W) → should decrease
+        Metric::factory()->charging(10)->create([
+            'recorded_at' => now()->subMinutes(2),
+            'meter_power_total' => -500,
+            'charger_current' => 10,
+            'meter_current_l1' => 10,
+            'meter_current_l2' => 10,
+            'meter_current_l3' => 10,
+        ]);
+        Metric::factory()->charging(10)->create([
+            'recorded_at' => now()->subMinute(),
+            'meter_power_total' => -200,
+            'charger_current' => 10,
+            'meter_current_l1' => 10,
+            'meter_current_l2' => 10,
+            'meter_current_l3' => 10,
+        ]);
+        Metric::factory()->charging(10)->create([
+            'recorded_at' => now(),
+            'meter_power_total' => 1500,
+            'charger_current' => 10,
+            'meter_current_l1' => 10,
+            'meter_current_l2' => 10,
+            'meter_current_l3' => 10,
+        ]);
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 10,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(function ($r) {
+            return $r->url() === 'http://198.51.100.10/rpc'
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_value'] ?? null) === 9;
+        });
+    });
+
     it('does not start solar during off-peak hours', function () {
         $this->travelTo(now()->setTime(23, 0));
 
