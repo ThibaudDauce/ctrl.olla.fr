@@ -2,37 +2,24 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Third Party Services
-    |--------------------------------------------------------------------------
-    |
-    | This file is for storing the credentials for third party services such
-    | as Mailgun, Postmark, AWS and more. This file provides the de facto
-    | location for this type of information, allowing packages to have
-    | a conventional file to locate the various service credentials.
-    |
-    */
-
-    'postmark' => [
-        'key' => env('POSTMARK_API_KEY'),
+    'lektrico' => [
+        'host' => env('LEKTRICO_HOST'),
     ],
 
-    'resend' => [
-        'key' => env('RESEND_API_KEY'),
+    'meter' => [
+        'host' => env('METER_HOST'),
     ],
 
-    'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    'envoy' => [
+        'host' => env('ENVOY_HOST'),
+        'email' => env('ENVOY_EMAIL'),
+        'token' => env('ENVOY_TOKEN'),
+        'token_expires_at' => env('ENVOY_TOKEN_EXPIRES_AT'),
     ],
 
-    'slack' => [
-        'notifications' => [
-            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
-            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
-        ],
+    'free_sms' => [
+        'user' => env('FREE_SMS_USER'),
+        'key' => env('FREE_SMS_KEY'),
     ],
 
 ];
