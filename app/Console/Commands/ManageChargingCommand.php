@@ -48,41 +48,48 @@ class ManageChargingCommand extends Command
 
     private function handleLoadShedding(Metric $latest, LektricoClient $charger, ChargerInfo $chargerInfo, ?ChargingSession $session, SmsNotifier $sms): bool
     {
-        $phaseMaxAmps = config('charging.phase_max_amps');
-        $maxPhase = max($latest->meter_current_l1, $latest->meter_current_l2, $latest->meter_current_l3);
         $currentAmps = (int) floor($chargerInfo->userPower / 230);
-        $minAmps = config('charging.min_charge_amps');
         $maxChargeAmps = config('charging.max_charge_amps');
 
-        if ($maxPhase > $phaseMaxAmps) {
-            $overage = (int) ceil($maxPhase - $phaseMaxAmps);
-            $targetAmps = $currentAmps - $overage;
+        if (config('charging.load_shedding_enabled')) {
+            $phaseMaxAmps = config('charging.phase_max_amps');
+            $maxPhase = max($latest->meter_current_l1, $latest->meter_current_l2, $latest->meter_current_l3);
+            $minAmps = config('charging.min_charge_amps');
 
-            if ($targetAmps < $minAmps) {
-                Log::warning('Load shedding: stopping charge, would go below minimum amps');
-                $charger->stop();
-                $this->closeSession($session, $latest, $sms);
-                $sms->send('Délestage : charge arrêtée, dépassement ampérage', 'load_shedding');
+            if ($maxPhase > $phaseMaxAmps) {
+                $overage = (int) ceil($maxPhase - $phaseMaxAmps);
+                $targetAmps = $currentAmps - $overage;
+
+                if ($targetAmps < $minAmps) {
+                    Log::warning('Load shedding: stopping charge, would go below minimum amps');
+                    $charger->stop();
+                    $this->closeSession($session, $latest, $sms);
+                    $sms->send('Délestage : charge arrêtée, dépassement ampérage', 'load_shedding');
+
+                    return true;
+                }
+
+                Log::info("Load shedding: reducing from {$currentAmps}A to {$targetAmps}A");
+                $charger->setUserPower($targetAmps);
+                $sms->send("Délestage : {$currentAmps}A → {$targetAmps}A");
 
                 return true;
             }
-
-            Log::info("Load shedding: reducing from {$currentAmps}A to {$targetAmps}A");
-            $charger->setUserPower($targetAmps);
-            $sms->send("Délestage : {$currentAmps}A → {$targetAmps}A");
-
-            return true;
         }
 
-        // Recovery: increase back when phases have headroom (solar adjusts itself)
+        // Recovery: increase back when below max (solar adjusts itself)
         if ($currentAmps < $maxChargeAmps && $session?->mode !== ChargingMode::Solar) {
-            $headroom = (int) floor($phaseMaxAmps - $maxPhase);
-            $targetAmps = min($maxChargeAmps, $currentAmps + $headroom);
+            if (config('charging.load_shedding_enabled')) {
+                $headroom = (int) floor($phaseMaxAmps - $maxPhase);
+                $targetAmps = min($maxChargeAmps, $currentAmps + $headroom);
+            } else {
+                $targetAmps = $maxChargeAmps;
+            }
 
             if ($targetAmps > $currentAmps) {
-                Log::info("Load shedding recovery: increasing from {$currentAmps}A to {$targetAmps}A");
+                Log::info("Recovery: increasing from {$currentAmps}A to {$targetAmps}A");
                 $charger->setUserPower($targetAmps);
-                $sms->send("Délestage récupération : {$currentAmps}A → {$targetAmps}A");
+                $sms->send("Récupération : {$currentAmps}A → {$targetAmps}A");
             }
         }
 
