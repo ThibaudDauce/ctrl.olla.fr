@@ -40,6 +40,9 @@ class ManageChargingCommand extends Command
             }
 
             $this->updateSession($latest, $session, $chargerInfo);
+        } elseif ($session) {
+            $this->closeSession($session, $latest, $sms);
+            $session = null;
         }
 
         $this->handleOffPeak($latest, $charger, $session, $sms);

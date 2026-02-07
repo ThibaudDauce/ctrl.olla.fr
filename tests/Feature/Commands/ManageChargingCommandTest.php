@@ -423,6 +423,27 @@ describe('session tracking', function () {
         expect($session->is_three_phase)->toBeTrue();
     });
 
+    it('closes session when car finishes charging', function () {
+        $this->travelTo(now()->setTime(3, 0));
+
+        $session = ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::OffPeak,
+            'started_at' => now()->subHours(2),
+        ]);
+
+        Metric::factory()->create([
+            'charger_state' => ChargerState::Connected,
+            'meter_current_l1' => 5,
+            'meter_current_l2' => 5,
+            'meter_current_l3' => 5,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        $session->refresh();
+        expect($session->ended_at)->not->toBeNull();
+    });
+
     it('updates max current when it increases', function () {
         Metric::factory()->create([
             'charger_state' => ChargerState::Charging,
