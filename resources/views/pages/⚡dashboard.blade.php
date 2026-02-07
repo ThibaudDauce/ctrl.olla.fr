@@ -328,8 +328,8 @@ new class extends Component {
                 <flux:chart.tooltip>
                     <flux:chart.tooltip.heading field="time"
                         :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]" />
-                    <flux:chart.tooltip.value field="consumption" label="Consommation" suffix=" W" />
-                    <flux:chart.tooltip.value field="production" label="Production solaire" suffix=" W" />
+                    <flux:chart.tooltip.value field="consumption" label="Consommation" suffix=" W" :format="['maximumFractionDigits' => 0]" />
+                    <flux:chart.tooltip.value field="production" label="Production solaire" suffix=" W" :format="['maximumFractionDigits' => 0]" />
                 </flux:chart.tooltip>
 
                 <div class="flex justify-center gap-4 pt-4">
