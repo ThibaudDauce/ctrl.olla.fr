@@ -233,7 +233,7 @@ new class extends Component {
                     <flux:heading size="xl" class="tabular-nums">
                         {{ number_format(abs($this->liveMeter['total']), 0, ',', "\u{202f}") }} W</flux:heading>
                     <flux:tooltip toggleable position="bottom">
-                        <flux:button icon="information-circle" size="sm" variant="ghost" />
+                        <flux:button icon="square-3-stack-3d" size="sm" variant="ghost" />
                         <flux:tooltip.content>
                             <div class="tabular-nums space-y-0.5">
                                 <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W</div>
@@ -271,7 +271,7 @@ new class extends Component {
                     <flux:heading size="xl" class="tabular-nums">
                         {{ number_format($this->liveCharger['total'], 0, ',', "\u{202f}") }} W</flux:heading>
                     <flux:tooltip toggleable position="bottom">
-                        <flux:button icon="information-circle" size="sm" variant="ghost" />
+                        <flux:button icon="square-3-stack-3d" size="sm" variant="ghost" />
                         <flux:tooltip.content>
                             <div class="tabular-nums space-y-0.5">
                                 <div>L1 : {{ number_format($this->liveCharger['phases'][0], 0, ',', "\u{202f}") }} W</div>
