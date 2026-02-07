@@ -229,17 +229,20 @@ new class extends Component {
 
             <flux:card class="relative overflow-hidden h-[8.5rem]" wire:poll.3s>
                 <flux:text>{{ $this->liveMeter['total'] >= 0 ? 'Consommation réseau' : 'Injection réseau' }}</flux:text>
-                <flux:tooltip position="bottom" toggleable>
-                    <flux:heading size="xl" class="mt-2 tabular-nums">
+                <div class="flex items-baseline gap-2 mt-2">
+                    <flux:heading size="xl" class="tabular-nums">
                         {{ number_format(abs($this->liveMeter['total']), 0, ',', "\u{202f}") }} W</flux:heading>
-                    <flux:tooltip.content>
-                        <div class="tabular-nums space-y-0.5">
-                            <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W</div>
-                            <div>L2 : {{ number_format(abs($this->liveMeter['phases'][1]), 0, ',', "\u{202f}") }} W</div>
-                            <div>L3 : {{ number_format(abs($this->liveMeter['phases'][2]), 0, ',', "\u{202f}") }} W</div>
-                        </div>
-                    </flux:tooltip.content>
-                </flux:tooltip>
+                    <flux:tooltip toggleable position="bottom">
+                        <flux:button icon="information-circle" size="sm" variant="ghost" />
+                        <flux:tooltip.content>
+                            <div class="tabular-nums space-y-0.5">
+                                <div>L1 : {{ number_format(abs($this->liveMeter['phases'][0]), 0, ',', "\u{202f}") }} W</div>
+                                <div>L2 : {{ number_format(abs($this->liveMeter['phases'][1]), 0, ',', "\u{202f}") }} W</div>
+                                <div>L3 : {{ number_format(abs($this->liveMeter['phases'][2]), 0, ',', "\u{202f}") }} W</div>
+                            </div>
+                        </flux:tooltip.content>
+                    </flux:tooltip>
+                </div>
                 @if (count($this->meterSparkline) > 1)
                     <flux:chart class="absolute -bottom-1.5 -inset-x-2 h-[3rem]" :value="$this->meterSparkline">
                         <flux:chart.svg gutter="0">
@@ -264,17 +267,20 @@ new class extends Component {
 
             <flux:card class="relative overflow-hidden h-[8.5rem]" wire:poll.3s>
                 <flux:text>Charge véhicule</flux:text>
-                <flux:tooltip position="bottom" toggleable>
-                    <flux:heading size="xl" class="mt-2 tabular-nums">
+                <div class="flex items-baseline gap-2 mt-2">
+                    <flux:heading size="xl" class="tabular-nums">
                         {{ number_format($this->liveCharger['total'], 0, ',', "\u{202f}") }} W</flux:heading>
-                    <flux:tooltip.content>
-                        <div class="tabular-nums space-y-0.5">
-                            <div>L1 : {{ number_format($this->liveCharger['phases'][0], 0, ',', "\u{202f}") }} W</div>
-                            <div>L2 : {{ number_format($this->liveCharger['phases'][1], 0, ',', "\u{202f}") }} W</div>
-                            <div>L3 : {{ number_format($this->liveCharger['phases'][2], 0, ',', "\u{202f}") }} W</div>
-                        </div>
-                    </flux:tooltip.content>
-                </flux:tooltip>
+                    <flux:tooltip toggleable position="bottom">
+                        <flux:button icon="information-circle" size="sm" variant="ghost" />
+                        <flux:tooltip.content>
+                            <div class="tabular-nums space-y-0.5">
+                                <div>L1 : {{ number_format($this->liveCharger['phases'][0], 0, ',', "\u{202f}") }} W</div>
+                                <div>L2 : {{ number_format($this->liveCharger['phases'][1], 0, ',', "\u{202f}") }} W</div>
+                                <div>L3 : {{ number_format($this->liveCharger['phases'][2], 0, ',', "\u{202f}") }} W</div>
+                            </div>
+                        </flux:tooltip.content>
+                    </flux:tooltip>
+                </div>
                 @if (count($this->chargerSparkline) > 1)
                     <flux:chart class="absolute -bottom-1.5 -inset-x-2 h-[3rem]" :value="$this->chargerSparkline">
                         <flux:chart.svg gutter="0">
