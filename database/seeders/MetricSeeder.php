@@ -84,7 +84,6 @@ class MetricSeeder extends Seeder
                 'solar_power' => $solar,
                 'charger_state' => ChargerState::Available,
                 'charger_power' => 0,
-                'charger_current' => 0,
                 'charger_current_l1' => 0,
                 'charger_current_l2' => 0,
                 'charger_current_l3' => 0,

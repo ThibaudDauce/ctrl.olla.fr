@@ -24,7 +24,6 @@ class MetricFactory extends Factory
             'solar_power' => fake()->randomFloat(1, 0, 3000),
             'charger_state' => ChargerState::Available,
             'charger_power' => 0,
-            'charger_current' => 0,
             'charger_current_l1' => 0,
             'charger_current_l2' => 0,
             'charger_current_l3' => 0,
@@ -39,7 +38,6 @@ class MetricFactory extends Factory
         return $this->state(fn () => [
             'charger_state' => ChargerState::Charging,
             'charger_power' => $powerPerPhase,
-            'charger_current' => $amps,
             'charger_current_l1' => $amps,
             'charger_current_l2' => 0,
             'charger_current_l3' => 0,

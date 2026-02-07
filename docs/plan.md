@@ -88,7 +88,6 @@ metrics
 ├── solar_power (W, float) — production solaire instantanée
 ├── charger_state (string) — état brut de la borne
 ├── charger_power (W, float) — puissance de charge instantanée
-├── charger_current (A, int) — ampérage demandé
 ├── charger_current_l1 (A, float)
 ├── charger_current_l2 (A, float)
 ├── charger_current_l3 (A, float)

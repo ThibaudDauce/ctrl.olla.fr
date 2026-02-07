@@ -405,7 +405,6 @@ describe('session tracking', function () {
         Metric::factory()->create([
             'charger_state' => ChargerState::Charging,
             'charger_power' => 11000,
-            'charger_current' => 16,
             'charger_current_l1' => 16,
             'charger_current_l2' => 16,
             'charger_current_l3' => 16,
@@ -428,7 +427,6 @@ describe('session tracking', function () {
         Metric::factory()->create([
             'charger_state' => ChargerState::Charging,
             'charger_power' => 7360,
-            'charger_current' => 32,
             'charger_current_l1' => 32,
             'charger_current_l2' => 0,
             'charger_current_l3' => 0,
