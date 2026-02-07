@@ -303,13 +303,13 @@ new class extends Component {
                         {{-- Import : jaune couvre la base bleue, bleu visible au-dessus = import réseau --}}
                         {{-- Injection : bleu couvre la base verte, vert visible au-dessus = injection --}}
                         <flux:chart.area field="production" class="text-lime-100 dark:text-lime-400/25" />
-                        <flux:chart.line field="production" class="text-lime-500 dark:text-lime-400" />
 
                         <flux:chart.area field="consumption" class="text-blue-100 dark:text-blue-400/25" />
                         <flux:chart.line field="consumption" class="text-blue-500 dark:text-blue-400" />
 
                         <flux:chart.area field="solar_contrib" class="text-amber-200 dark:text-amber-400/40" />
-                        <flux:chart.line field="solar_contrib" class="text-amber-500 dark:text-amber-400" />
+
+                        <flux:chart.line field="production" class="text-amber-500 dark:text-amber-400" />
 
                         <flux:chart.axis axis="x" field="time" scale="time"
                             :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]">
