@@ -24,9 +24,15 @@ function fakeLektricoResponses(array $overrides = []): void
         'dynamic_current' => 16,
     ], $overrides['dynamic_current'] ?? []);
 
+    $appConfig = array_merge([
+        'user_current' => 32,
+        'user_power' => 7360,
+    ], $overrides['app_config'] ?? []);
+
     Http::fake([
         "http://{$host}/rpc/charger_info.get" => Http::response($chargerInfo),
         "http://{$host}/rpc/dynamic_current.get" => Http::response($dynamicCurrent),
+        "http://{$host}/rpc/app_config.get" => Http::response($appConfig),
         "http://{$host}/rpc" => Http::response(['result' => true]),
     ]);
 }
@@ -79,6 +85,11 @@ function fakeAllDevices(array $overrides = []): void
         'dynamic_current' => 16,
     ], $overrides['dynamic_current'] ?? []);
 
+    $appConfig = array_merge([
+        'user_current' => 32,
+        'user_power' => 7360,
+    ], $overrides['app_config'] ?? []);
+
     $meter = array_merge([
         'total_active_power' => 1500.0,
         'active_p' => [500.0, 500.0, 500.0],
@@ -93,6 +104,7 @@ function fakeAllDevices(array $overrides = []): void
     Http::fake([
         "http://{$host_lektrico}/rpc/charger_info.get" => Http::response($chargerInfo),
         "http://{$host_lektrico}/rpc/dynamic_current.get" => Http::response($dynamicCurrent),
+        "http://{$host_lektrico}/rpc/app_config.get" => Http::response($appConfig),
         "http://{$host_lektrico}/rpc" => Http::response(['result' => true]),
         "http://{$host_meter}/rpc/Meter_info.Get" => Http::response($meter),
         "https://{$host_envoy}/api/v1/production" => Http::response($envoy),

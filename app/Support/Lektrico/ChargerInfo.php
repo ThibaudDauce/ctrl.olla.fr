@@ -12,6 +12,8 @@ class ChargerInfo
         public ChargerState $state,
         public float $instantPower,
         public int $dynamicCurrent,
+        public int $userCurrent,
+        public int $userPower,
         public int $chargingTime,
         public float $sessionEnergy,
         public array $currents,

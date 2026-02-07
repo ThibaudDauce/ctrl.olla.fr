@@ -124,8 +124,9 @@ describe('load shedding', function () {
 
         Http::assertSent(function ($r) {
             return $r->url() === 'http://198.51.100.10/rpc'
-                && ($r['method'] ?? null) === 'dynamic_current.set'
-                && ($r['params']['dynamic_current'] ?? null) === 15;
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 15 * 230;
         });
     });
 
@@ -222,8 +223,9 @@ describe('solar', function () {
 
         Http::assertSent(function ($r) {
             return $r->url() === 'http://198.51.100.10/rpc'
-                && ($r['method'] ?? null) === 'dynamic_current.set'
-                && ($r['params']['dynamic_current'] ?? null) === 11;
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 11 * 230;
         });
     });
 
@@ -265,8 +267,9 @@ describe('solar', function () {
 
         Http::assertSent(function ($r) {
             return $r->url() === 'http://198.51.100.10/rpc'
-                && ($r['method'] ?? null) === 'dynamic_current.set'
-                && ($r['params']['dynamic_current'] ?? null) === 9;
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 9 * 230;
         });
     });
 

@@ -10,6 +10,6 @@ return [
 
     'min_charge_amps' => 6,
 
-    'max_charge_amps' => 32,
+    'max_charge_amps' => 16,
 
 ];

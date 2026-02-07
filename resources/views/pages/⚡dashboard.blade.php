@@ -14,7 +14,12 @@ new class extends Component {
 
     public function mount(): void
     {
-        $this->requestedAmps = $this->latest?->charger_current;
+        try {
+            $info = LektricoClient::make()->info();
+            $this->requestedAmps = (int) floor($info->userPower / 230);
+        } catch (\Throwable) {
+            $this->requestedAmps = config('charging.min_charge_amps');
+        }
     }
 
     #[Computed]
@@ -143,7 +148,7 @@ new class extends Component {
         $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
         $charger = LektricoClient::make();
-        $charger->setDynamicCurrent($this->requestedAmps);
+        $charger->setUserPower($this->requestedAmps);
         $charger->start();
 
         ChargingSession::query()->create([
@@ -174,7 +179,7 @@ new class extends Component {
     {
         $this->requestedAmps = $this->clampCurrent($this->requestedAmps ?? config('charging.min_charge_amps'));
 
-        LektricoClient::make()->setDynamicCurrent($this->requestedAmps);
+        LektricoClient::make()->setUserPower($this->requestedAmps);
 
         $session = $this->activeSession;
         if ($session && $this->requestedAmps > $session->max_current) {
@@ -415,26 +420,24 @@ new class extends Component {
         @endif
 
         {{-- Controls --}}
-        @if ($isConnectable || $isCharging)
-            <flux:card class="mb-6">
-                <flux:heading size="lg" class="mb-4">Contrôles</flux:heading>
+        <flux:card class="mb-6">
+            <flux:heading size="lg" class="mb-4">Contrôles</flux:heading>
 
-                @if ($isConnectable)
-                    <flux:button variant="primary" wire:click="startCharge">Lancer la charge</flux:button>
-                @endif
+            @if ($isConnectable)
+                <flux:button variant="primary" wire:click="startCharge">Lancer la charge</flux:button>
+            @endif
 
-                <div class="mt-4">
-                    <flux:text class="text-sm text-zinc-500 mb-2">Ampérage : <span
-                            x-text="$wire.requestedAmps + 'A'">{{ $this->requestedAmps }}A</span></flux:text>
-                    <flux:slider wire:model.live.debounce.500ms="requestedAmps" min="6" max="32"
-                        step="1">
-                        @for ($a = 6; $a <= 32; $a++)
-                            <flux:slider.tick :value="$a">{{ $a % 2 === 0 ? $a : '' }}</flux:slider.tick>
-                        @endfor
-                    </flux:slider>
-                </div>
-            </flux:card>
-        @endif
+            <div class="{{ $isConnectable ? 'mt-4' : '' }}">
+                <flux:text class="text-sm text-zinc-500 mb-2">Ampérage : <span
+                        x-text="$wire.requestedAmps + 'A'">{{ $this->requestedAmps }}A</span></flux:text>
+                <flux:slider wire:model.live.debounce.500ms="requestedAmps" min="6" max="32"
+                    step="1">
+                    @for ($a = 6; $a <= 32; $a++)
+                        <flux:slider.tick :value="$a">{{ $a % 2 === 0 ? $a : '' }}</flux:slider.tick>
+                    @endfor
+                </flux:slider>
+            </div>
+        </flux:card>
 
         {{-- Charger state when not charging/connectable --}}
         @if (!$isCharging && !$isConnectable && $latest->charger_state)

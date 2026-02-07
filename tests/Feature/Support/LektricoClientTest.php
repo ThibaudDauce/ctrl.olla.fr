@@ -29,6 +29,8 @@ it('fetches charger info', function () {
     expect($info->state)->toBe(ChargerState::Charging)
         ->and($info->instantPower)->toBe(3680.0)
         ->and($info->dynamicCurrent)->toBe(16)
+        ->and($info->userCurrent)->toBe(32)
+        ->and($info->userPower)->toBe(7360)
         ->and($info->chargingTime)->toBe(3600)
         ->and($info->sessionEnergy)->toBe(3.5)
         ->and($info->currents)->toBe([16.1, 0, 0])
@@ -61,15 +63,16 @@ it('sends stop command', function () {
     });
 });
 
-it('sends set dynamic current command', function () {
+it('sends set user power command', function () {
     fakeLektricoResponses();
 
     $client = LektricoClient::make();
-    $client->setDynamicCurrent(24);
+    $client->setUserPower(24);
 
     Http::assertSent(function ($request) {
         return $request->url() === 'http://198.51.100.10/rpc'
-            && $request['method'] === 'dynamic_current.set'
-            && $request['params']['dynamic_current'] === 24;
+            && $request['method'] === 'app_config.set'
+            && $request['params']['config_key'] === 'user_power'
+            && $request['params']['config_value'] === 24 * 230;
     });
 });

@@ -17,11 +17,14 @@ class LektricoClient
     {
         $info = Http::get("http://{$this->host}/rpc/charger_info.get")->json();
         $dynamic = Http::get("http://{$this->host}/rpc/dynamic_current.get")->json();
+        $config = Http::get("http://{$this->host}/rpc/app_config.get")->json();
 
         return new ChargerInfo(
             state: ChargerState::from($info['extended_charger_state']),
             instantPower: $info['instant_power'],
             dynamicCurrent: $dynamic['dynamic_current'],
+            userCurrent: $config['user_current'],
+            userPower: $config['user_power'],
             chargingTime: $info['charging_time'],
             sessionEnergy: $info['session_energy'],
             currents: $info['currents'],
@@ -44,11 +47,11 @@ class LektricoClient
         ]);
     }
 
-    public function setDynamicCurrent(int $amps): void
+    public function setUserPower(int $amps): void
     {
         $this->post([
-            'method' => 'dynamic_current.set',
-            'params' => ['dynamic_current' => $amps],
+            'method' => 'app_config.set',
+            'params' => ['config_key' => 'user_power', 'config_value' => $amps * 230],
         ]);
     }
 
