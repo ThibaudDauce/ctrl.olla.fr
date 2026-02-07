@@ -94,27 +94,22 @@ new #[Title('Dashboard')] class extends Component {
     {
         $fmt = 'Y-m-d\TH:i:s';
 
-        $data = Metric::query()
-            ->whereDate('recorded_at', today())
-            ->orderBy('recorded_at')
-            ->get()
-            ->map(
-                fn(Metric $m) => [
+        return $this->todayMetrics
+            ->map(function (Metric $m) use ($fmt) {
+                $meter = $m->meter_power_total ?? 0;
+                $solar = $m->solar_power ?? 0;
+                $consumption = max(0, $solar + $meter);
+                $importing = $meter >= 0;
+
+                return [
                     'time' => $m->recorded_at->format($fmt),
-                    'consumption' => max(0, $m->meter_power_total ?? 0),
-                    'solar' => $m->solar_power ?? 0,
-                    'charge' => $m->charger_power ?? 0,
-                    '_span' => 0,
-                ],
-            )
+                    'production' => $solar,
+                    'consumption' => $consumption,
+                    // Jaune uniquement en mode import, pour couvrir la base bleue
+                    'solar_contrib' => $importing ? $solar : 0,
+                ];
+            })
             ->all();
-
-        // Bornes sans les champs réels — étendent le domain X via _span
-        // Placées en fin de tableau pour que data[0] ait tous les champs (requis par Flux)
-        $data[] = ['time' => today()->startOfDay()->format($fmt), '_span' => 0];
-        $data[] = ['time' => today()->endOfDay()->format($fmt), '_span' => 0];
-
-        return $data;
     }
 
     #[Computed]
@@ -266,10 +261,17 @@ new #[Title('Dashboard')] class extends Component {
             <flux:chart :value="$this->chartData">
                 <flux:chart.viewport class="aspect-3/1">
                     <flux:chart.svg>
-                        <flux:chart.line field="_span" class="opacity-0" />
-                        <flux:chart.line field="consumption" class="text-blue-500" />
-                        <flux:chart.line field="solar" class="text-amber-500" />
-                        <flux:chart.line field="charge" class="text-green-500" />
+                        {{-- Ordre de peinture SVG : vert (fond) → bleu (milieu) → jaune (dessus) --}}
+                        {{-- Import : jaune couvre la base bleue, bleu visible au-dessus = import réseau --}}
+                        {{-- Injection : bleu couvre la base verte, vert visible au-dessus = injection --}}
+                        <flux:chart.area field="production" class="text-lime-100 dark:text-lime-400/25" />
+                        <flux:chart.line field="production" class="text-lime-500 dark:text-lime-400" />
+
+                        <flux:chart.area field="consumption" class="text-blue-100 dark:text-blue-400/25" />
+                        <flux:chart.line field="consumption" class="text-blue-500 dark:text-blue-400" />
+
+                        <flux:chart.area field="solar_contrib" class="text-amber-200 dark:text-amber-400/40" />
+                        <flux:chart.line field="solar_contrib" class="text-amber-500 dark:text-amber-400" />
 
                         <flux:chart.axis axis="x" field="time" scale="time"
                             :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]">
@@ -289,19 +291,18 @@ new #[Title('Dashboard')] class extends Component {
                     <flux:chart.tooltip.heading field="time"
                         :format="['hour' => 'numeric', 'minute' => '2-digit', 'hour12' => false]" />
                     <flux:chart.tooltip.value field="consumption" label="Consommation" suffix=" W" />
-                    <flux:chart.tooltip.value field="solar" label="Solaire" suffix=" W" />
-                    <flux:chart.tooltip.value field="charge" label="Charge" suffix=" W" />
+                    <flux:chart.tooltip.value field="production" label="Production solaire" suffix=" W" />
                 </flux:chart.tooltip>
 
                 <div class="flex justify-center gap-4 pt-4">
-                    <flux:chart.legend label="Consommation">
+                    <flux:chart.legend label="Import réseau">
                         <flux:chart.legend.indicator class="bg-blue-500" />
                     </flux:chart.legend>
-                    <flux:chart.legend label="Solaire">
+                    <flux:chart.legend label="Autoconso. solaire">
                         <flux:chart.legend.indicator class="bg-amber-500" />
                     </flux:chart.legend>
-                    <flux:chart.legend label="Charge">
-                        <flux:chart.legend.indicator class="bg-green-500" />
+                    <flux:chart.legend label="Injection">
+                        <flux:chart.legend.indicator class="bg-lime-500" />
                     </flux:chart.legend>
                 </div>
             </flux:chart>

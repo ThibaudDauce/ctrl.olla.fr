@@ -2,9 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\ChargingSession;
 use App\Models\Metric;
-use App\Support\ChargingMode;
 use App\Support\Lektrico\ChargerState;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Seeder;
@@ -13,25 +11,29 @@ class MetricSeeder extends Seeder
 {
     public function run(): void
     {
-        $start = today()->startOfDay();
-        $now = now();
-
         $sunriseHour = 7;
         $sunsetHour = 19;
         $solarPeakHour = 13;
-        $solarMaxWatts = 4500;
+        $solarMaxWatts = 5500;
 
-        // Base household consumption varies by time of day
-        $baseConsumption = function (int $hour): float {
-            return match (true) {
-                $hour >= 0 && $hour < 6 => rand(300, 600),
-                $hour >= 6 && $hour < 8 => rand(800, 1500),
-                $hour >= 8 && $hour < 12 => rand(500, 1000),
-                $hour >= 12 && $hour < 14 => rand(1200, 2000),
-                $hour >= 14 && $hour < 18 => rand(600, 1000),
-                $hour >= 18 && $hour < 22 => rand(1500, 2500),
-                default => rand(400, 800),
+        $baseConsumption = function (CarbonInterface $time): float {
+            $hour = $time->hour + $time->minute / 60;
+
+            $base = match (true) {
+                $hour < 6 => 350,
+                $hour < 7 => 350 + ($hour - 6) * 600,
+                $hour < 8 => 950 + ($hour - 7) * 200,
+                $hour < 11 => 700 + sin(($hour - 8) / 3 * M_PI) * 200,
+                $hour < 12 => 700 + ($hour - 11) * 800,
+                $hour < 13.5 => 1500 + sin(($hour - 12) / 1.5 * M_PI) * 500,
+                $hour < 17 => 600 + ($hour - 13.5) / 3.5 * 400,
+                $hour < 18 => 1000 + ($hour - 17) * 1000,
+                $hour < 21 => 2000 + sin(($hour - 18) / 3 * M_PI) * 800,
+                $hour < 23 => 2000 - ($hour - 21) * 700,
+                default => 600,
             };
+
+            return max(200, $base + rand(-80, 80));
         };
 
         $solarPower = function (CarbonInterface $time) use ($sunriseHour, $sunsetHour, $solarPeakHour, $solarMaxWatts): float {
@@ -41,77 +43,30 @@ class MetricSeeder extends Seeder
                 return 0;
             }
 
-            $progress = ($hour - $sunriseHour) / ($solarPeakHour - $sunriseHour);
-            if ($hour > $solarPeakHour) {
+            if ($hour <= $solarPeakHour) {
+                $progress = ($hour - $sunriseHour) / ($solarPeakHour - $sunriseHour);
+            } else {
                 $progress = 1 - (($hour - $solarPeakHour) / ($sunsetHour - $solarPeakHour));
             }
 
-            $cloud = rand(70, 100) / 100;
-
-            return max(0, round($solarMaxWatts * $progress * $cloud));
-        };
-
-        // Off-peak charging session: 22:15 yesterday → 05:55 today
-        $offPeakSession = ChargingSession::create([
-            'started_at' => today()->subDay()->setTime(22, 15),
-            'ended_at' => today()->setTime(5, 55),
-            'mode' => ChargingMode::OffPeak,
-            'energy_kwh' => 28.3,
-            'is_three_phase' => false,
-            'max_current' => 32,
-        ]);
-
-        // Solar charging session: 10:30 → 15:45 today
-        $solarSession = null;
-        if ($now->hour >= 16) {
-            $solarSession = ChargingSession::create([
-                'started_at' => today()->setTime(10, 30),
-                'ended_at' => today()->setTime(15, 45),
-                'mode' => ChargingMode::Solar,
-                'energy_kwh' => 12.1,
-                'is_three_phase' => false,
-                'max_current' => 16,
-            ]);
-        } elseif ($now->hour >= 11) {
-            $solarSession = ChargingSession::create([
-                'started_at' => today()->setTime(10, 30),
-                'ended_at' => null,
-                'mode' => ChargingMode::Solar,
-                'energy_kwh' => 0,
-                'is_three_phase' => false,
-                'max_current' => 14,
-            ]);
-        }
-
-        $time = $start;
-        while ($time->lte($now)) {
-            $hour = $time->hour;
-            $solar = $solarPower($time);
-            $consumption = $baseConsumption($hour);
-
-            $isOffPeakCharging = ($hour >= 22 && $hour <= 23) || ($hour >= 0 && $hour < 6);
-            $isSolarCharging = $solarSession
-                && $time->gte($solarSession->started_at)
-                && ($solarSession->ended_at === null || $time->lte($solarSession->ended_at));
-
-            $chargerPower = 0;
-            $chargerCurrent = 0;
-            $chargerState = ChargerState::Available;
-
-            if ($isOffPeakCharging && $time->lt(today()->setTime(5, 55))) {
-                $chargerPower = 7360;
-                $chargerCurrent = 32;
-                $chargerState = ChargerState::Charging;
-            } elseif ($isSolarCharging) {
-                $solarAmps = max(6, min(16, (int) floor($solar / 230)));
-                $chargerPower = $solarAmps * 230;
-                $chargerCurrent = $solarAmps;
-                $chargerState = ChargerState::Charging;
-            } elseif ($hour >= 8 && $hour < 22) {
-                $chargerState = ChargerState::NeedAuth;
+            // Passage nuageux entre 14h et 15h30
+            $cloud = 1.0;
+            if ($hour >= 14 && $hour <= 15.5) {
+                $cloud = 0.35 + 0.25 * sin(($hour - 14) / 1.5 * M_PI * 3);
             }
 
-            $meterTotal = $consumption + $chargerPower - $solar;
+            $jitter = rand(95, 105) / 100;
+
+            return max(0, round($solarMaxWatts * pow($progress, 1.2) * $cloud * $jitter));
+        };
+
+        $time = today()->startOfDay();
+        $end = today()->endOfDay();
+
+        while ($time->lte($end)) {
+            $solar = $solarPower($time);
+            $consumption = $baseConsumption($time);
+            $meterTotal = $consumption - $solar;
 
             $l1Ratio = rand(30, 40) / 100;
             $l2Ratio = rand(28, 38) / 100;
@@ -127,10 +82,10 @@ class MetricSeeder extends Seeder
                 'meter_current_l2' => round(abs($meterTotal * $l2Ratio) / 230, 2),
                 'meter_current_l3' => round(abs($meterTotal * $l3Ratio) / 230, 2),
                 'solar_power' => $solar,
-                'charger_state' => $chargerState,
-                'charger_power' => $chargerPower,
-                'charger_current' => $chargerCurrent,
-                'charger_current_l1' => $chargerCurrent,
+                'charger_state' => ChargerState::Available,
+                'charger_power' => 0,
+                'charger_current' => 0,
+                'charger_current_l1' => 0,
                 'charger_current_l2' => 0,
                 'charger_current_l3' => 0,
                 'created_at' => $time,

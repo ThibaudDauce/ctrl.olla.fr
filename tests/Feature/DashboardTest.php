@@ -32,8 +32,8 @@ it('shows chart when metrics exist', function () {
     $this->get('/')
         ->assertSuccessful()
         ->assertSee('Consommation')
-        ->assertSee('Solaire')
-        ->assertSee('Charge');
+        ->assertSee('Autoconso. solaire')
+        ->assertSee('Injection');
 });
 
 it('shows charging status when charger is active', function () {
