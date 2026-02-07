@@ -131,7 +131,10 @@ describe('off-peak', function () {
 });
 
 describe('load shedding', function () {
-    it('reduces current when a phase is overloaded', function () {
+    it('reduces current based on phase overage', function () {
+        // L1 at 22A, max 20A → overage 2A → 16A - 2A = 14A
+        fakeLektricoResponses(['app_config' => ['user_power' => 16 * 230]]);
+
         Metric::factory()->charging(16)->create([
             'meter_current_l1' => 22,
             'meter_current_l2' => 10,
@@ -146,14 +149,16 @@ describe('load shedding', function () {
             return $r->url() === 'http://198.51.100.10/rpc'
                 && ($r['method'] ?? null) === 'app_config.set'
                 && ($r['params']['config_key'] ?? null) === 'user_power'
-                && ($r['params']['config_value'] ?? null) === 15 * 230;
+                && ($r['params']['config_value'] ?? null) === 14 * 230;
         });
     });
 
-    it('stops charge when at minimum amps and still overloaded', function () {
-        Metric::factory()->charging(6)->create([
-            'charger_current' => 6,
-            'meter_current_l1' => 22,
+    it('stops charge when overage would go below minimum amps', function () {
+        // L1 at 25A, max 20A → overage 5A → 8A - 5A = 3A < 6A min → stop
+        fakeLektricoResponses(['app_config' => ['user_power' => 8 * 230]]);
+
+        Metric::factory()->charging(8)->create([
+            'meter_current_l1' => 25,
             'meter_current_l2' => 10,
             'meter_current_l3' => 10,
         ]);
@@ -166,6 +171,54 @@ describe('load shedding', function () {
 
         $session->refresh();
         expect($session->ended_at)->not->toBeNull();
+    });
+
+    it('recovers amps when phases have headroom after load shedding', function () {
+        // All phases at 15A, max 20A → headroom 5A → 20A + 5A = 25A
+        fakeLektricoResponses(['app_config' => ['user_power' => 20 * 230]]);
+
+        Metric::factory()->charging(20)->create([
+            'meter_current_l1' => 15,
+            'meter_current_l2' => 15,
+            'meter_current_l3' => 15,
+        ]);
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::OffPeak,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(function ($r) {
+            return $r->url() === 'http://198.51.100.10/rpc'
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 25 * 230;
+        });
+    });
+
+    it('does not recover beyond max charge amps', function () {
+        // All phases at 10A, max 20A → headroom 10A → 28A + 10A = 38A, capped at 32A
+        fakeLektricoResponses(['app_config' => ['user_power' => 28 * 230]]);
+
+        Metric::factory()->charging(28)->create([
+            'meter_current_l1' => 10,
+            'meter_current_l2' => 10,
+            'meter_current_l3' => 10,
+        ]);
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::OffPeak,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(function ($r) {
+            return $r->url() === 'http://198.51.100.10/rpc'
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 32 * 230;
+        });
     });
 });
 
