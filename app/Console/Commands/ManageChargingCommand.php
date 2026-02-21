@@ -35,6 +35,16 @@ class ManageChargingCommand extends Command
         if ($isCharging) {
             $chargerInfo = $charger->info();
 
+            if (! $session) {
+                $currentAmps = (int) floor($chargerInfo->userPower / 230);
+                $session = ChargingSession::query()->create([
+                    'started_at' => now(),
+                    'mode' => ChargingMode::Manual,
+                    'max_current' => $currentAmps,
+                ]);
+                Log::info("Adopted external charge as manual session at {$currentAmps}A");
+            }
+
             if ($this->handleLoadShedding($latest, $charger, $chargerInfo, $session, $sms)) {
                 return;
             }
@@ -120,7 +130,7 @@ class ManageChargingCommand extends Command
 
         // Leaving off-peak
         if (! $isInOffPeak && $latest->charger_state->isCharging()) {
-            if ($session?->mode === ChargingMode::Solar) {
+            if ($session?->mode === ChargingMode::Solar || $session?->mode === ChargingMode::Manual) {
                 return;
             }
 
