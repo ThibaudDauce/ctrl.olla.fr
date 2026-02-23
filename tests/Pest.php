@@ -37,6 +37,18 @@ function fakeLektricoResponses(array $overrides = []): void
     ]);
 }
 
+function fakeTempoResponses(string $color = 'Bleu', int $code = 1): void
+{
+    Http::fake([
+        'www.api-couleur-tempo.fr/api/jourTempo/today' => Http::response([
+            'dateJour' => now()->toDateString(),
+            'codeJour' => $code,
+            'periode' => now()->year.'-'.(now()->year + 1),
+            'libCouleur' => $color,
+        ]),
+    ]);
+}
+
 function fakeMeterResponses(array $overrides = []): void
 {
     $host = config('services.meter.host');

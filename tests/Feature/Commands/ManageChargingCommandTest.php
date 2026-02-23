@@ -6,6 +6,7 @@ use App\Models\Metric;
 use App\Support\ChargingMode;
 use App\Support\Lektrico\ChargerState;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -17,9 +18,16 @@ beforeEach(function () {
         'charging.phase_max_amps' => 20,
         'charging.min_charge_amps' => 6,
         'charging.max_charge_amps' => 32,
+        'charging.tempo.margin' => 0.20,
+        'charging.tempo.rates.bleu_hc' => 0.1056,
+        'charging.tempo.rates.bleu_hp' => 0.1369,
+        'charging.tempo.rates.blanc_hp' => 0.1553,
+        'charging.tempo.rates.rouge_hp' => 0.7324,
     ]);
 
+    Cache::forget('tempo_day_color');
     fakeLektricoResponses();
+    fakeTempoResponses();
 });
 
 it('skips when no metrics exist', function () {
@@ -228,15 +236,13 @@ describe('load shedding', function () {
 });
 
 describe('solar', function () {
-    it('starts solar charging when surplus is sustained for 3 minutes', function () {
+    it('starts solar charging with full surplus', function () {
         $this->travelTo(now()->setTime(12, 0));
-
-        $minSurplus = 6 * 230;
 
         foreach (range(0, 2) as $i) {
             Metric::factory()->create([
                 'recorded_at' => now()->subMinutes(2 - $i),
-                'meter_power_total' => -($minSurplus + 200),
+                'meter_power_total' => -1580,
                 'charger_state' => ChargerState::NeedAuth,
                 'meter_current_l1' => 5,
                 'meter_current_l2' => 5,
@@ -253,13 +259,70 @@ describe('solar', function () {
         Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.start');
     });
 
-    it('stops solar charging when consuming from grid for 2 minutes', function () {
+    it('starts solar on blue day with small surplus', function () {
+        // Jour bleu HP 0.1369€, seuil = HC bleue 0.1056 × 1.20 = 0.12672
+        // minSurplusRatio = 1 - 0.12672/0.1369 = 0.0744 → minSurplus = 1380 × 0.0744 ≈ 103W
+        // 200W surplus > 103W → charge démarre
         $this->travelTo(now()->setTime(12, 0));
 
         foreach (range(0, 2) as $i) {
-            Metric::factory()->charging()->create([
+            Metric::factory()->create([
                 'recorded_at' => now()->subMinutes(2 - $i),
-                'meter_power_total' => 500,
+                'meter_power_total' => -200,
+                'charger_state' => ChargerState::NeedAuth,
+                'meter_current_l1' => 5,
+                'meter_current_l2' => 5,
+                'meter_current_l3' => 5,
+            ]);
+        }
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        $session = ChargingSession::query()->first();
+        expect($session)->not->toBeNull()
+            ->and($session->mode)->toBe(ChargingMode::Solar);
+    });
+
+    it('does not start solar on rouge day with small surplus', function () {
+        // Jour rouge HP 0.7324€, seuil = 0.12672
+        // minSurplusRatio = 1 - 0.12672/0.7324 = 0.8270 → minSurplus = 1380 × 0.827 ≈ 1141W
+        // 200W surplus < 1141W → pas de charge
+        Http::swap(new Factory);
+        fakeLektricoResponses();
+        fakeTempoResponses('Rouge', 3);
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -200,
+                'charger_state' => ChargerState::NeedAuth,
+                'meter_current_l1' => 5,
+                'meter_current_l2' => 5,
+                'meter_current_l3' => 5,
+            ]);
+        }
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        expect(ChargingSession::query()->count())->toBe(0);
+    });
+
+    it('stops solar on rouge day when grid cost exceeds threshold', function () {
+        // Jour rouge, charge à 6A (1380W), meter=400W → grid=400W
+        // cost = (400/1380) × 0.7324 = 0.2124 > seuil 0.12672 → arrêt
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses(['app_config' => ['user_power' => 6 * 230]]);
+        fakeTempoResponses('Rouge', 3);
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(6)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => 400,
                 'meter_current_l1' => 10,
                 'meter_current_l2' => 10,
                 'meter_current_l3' => 10,
@@ -278,10 +341,36 @@ describe('solar', function () {
         Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.stop');
     });
 
+    it('keeps solar on blue day with moderate grid consumption', function () {
+        // Jour bleu, charge à 6A (1380W), meter=500W → grid=500W
+        // cost = (500/1380) × 0.1369 = 0.0496 < seuil 0.12672 → continue
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(6)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => 500,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        $session = ChargingSession::query()->whereNull('ended_at')->first();
+        expect($session)->not->toBeNull();
+    });
+
     it('increases current when surplus is available during solar charge', function () {
-        // user_power at 10A, avg surplus -2000W → floor(2000/230) = +8A → target 18A
         Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
         fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+        fakeTempoResponses();
 
         $this->travelTo(now()->setTime(12, 0));
 
@@ -311,9 +400,10 @@ describe('solar', function () {
     });
 
     it('decreases current when partially consuming from grid during solar charge', function () {
-        // user_power at 10A, avg power +267W → floor(-267/230) = -2A → target 8A
         Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
         fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+        fakeTempoResponses();
 
         $this->travelTo(now()->setTime(12, 0));
 
@@ -371,6 +461,33 @@ describe('solar', function () {
         $this->artisan('app:manage-charging')->assertSuccessful();
 
         expect(ChargingSession::query()->where('mode', ChargingMode::Solar)->count())->toBe(0);
+    });
+
+    it('defaults to rouge when tempo API fails', function () {
+        // API fail → Rouge → minSurplusRatio élevé → 200W surplus insuffisant
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses();
+        Http::fake([
+            'www.api-couleur-tempo.fr/*' => Http::response([], 500),
+        ]);
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -200,
+                'charger_state' => ChargerState::NeedAuth,
+                'meter_current_l1' => 5,
+                'meter_current_l2' => 5,
+                'meter_current_l3' => 5,
+            ]);
+        }
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        expect(ChargingSession::query()->count())->toBe(0);
     });
 });
 

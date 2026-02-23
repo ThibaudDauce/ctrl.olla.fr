@@ -14,4 +14,14 @@ return [
 
     'max_charge_amps' => 16,
 
+    'tempo' => [
+        'margin' => (float) env('TEMPO_MARGIN', 0.20),
+        'rates' => [
+            'bleu_hc' => (float) env('TEMPO_BLEU_HC', 0.1056),
+            'bleu_hp' => (float) env('TEMPO_BLEU_HP', 0.1369),
+            'blanc_hp' => (float) env('TEMPO_BLANC_HP', 0.1553),
+            'rouge_hp' => (float) env('TEMPO_ROUGE_HP', 0.7324),
+        ],
+    ],
+
 ];

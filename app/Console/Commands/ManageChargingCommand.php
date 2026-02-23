@@ -8,6 +8,7 @@ use App\Support\ChargingMode;
 use App\Support\Lektrico\ChargerInfo;
 use App\Support\Lektrico\LektricoClient;
 use App\Support\SmsNotifier;
+use App\Support\Tempo\TempoClient;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -146,6 +147,10 @@ class ManageChargingCommand extends Command
             return;
         }
 
+        $tempo = new TempoClient;
+        $threshold = $tempo->costThreshold();
+        $hpRate = $tempo->today()->hpRate();
+
         $recentMetrics = Metric::query()
             ->latest('recorded_at')
             ->take(3)
@@ -155,16 +160,18 @@ class ManageChargingCommand extends Command
 
         if (! $isCharging && $latest->charger_state->isConnectable()) {
             $minAmps = config('charging.min_charge_amps');
-            $minSurplus = $minAmps * 230;
+            $chargePower = $minAmps * 230;
+            $minSurplusRatio = max(0, 1 - $threshold / $hpRate);
+            $minSurplus = $chargePower * $minSurplusRatio;
 
-            $allHaveSurplus = $recentMetrics->count() >= 3
+            $allBelowThreshold = $recentMetrics->count() >= 3
                 && $recentMetrics->every(fn (Metric $m) => $m->meter_power_total !== null && $m->meter_power_total < -$minSurplus);
 
-            if ($allHaveSurplus) {
+            if ($allBelowThreshold) {
                 $avgSurplus = abs($recentMetrics->avg('meter_power_total'));
                 $amps = min(config('charging.max_charge_amps'), max($minAmps, (int) floor($avgSurplus / 230)));
 
-                Log::info("Solar: starting charge at {$amps}A");
+                Log::info("Solar: starting charge at {$amps}A (tempo={$tempo->today()->name}, threshold={$threshold}€)");
                 $charger->setUserPower($amps);
                 $charger->start();
                 $session = ChargingSession::query()->create([
@@ -179,12 +186,21 @@ class ManageChargingCommand extends Command
         }
 
         if ($isCharging && $session?->mode === ChargingMode::Solar) {
-            $positiveCount = $recentMetrics
-                ->filter(fn (Metric $m) => $m->meter_power_total !== null && $m->meter_power_total > 0)
+            $chargerPower = $chargerInfo->userPower;
+
+            $aboveThresholdCount = $recentMetrics
+                ->filter(function (Metric $m) use ($chargerPower, $hpRate, $threshold) {
+                    if ($m->meter_power_total === null) {
+                        return false;
+                    }
+                    $gridForCharging = min($chargerPower, max(0, $m->meter_power_total));
+
+                    return ($gridForCharging / $chargerPower) * $hpRate > $threshold;
+                })
                 ->count();
 
-            if ($positiveCount >= 2) {
-                Log::info('Solar: stopping charge, consuming from grid');
+            if ($aboveThresholdCount >= 2) {
+                Log::info('Solar: stopping charge, cost above threshold');
                 $charger->stop();
                 $this->closeSession($session, $latest, $sms);
 
