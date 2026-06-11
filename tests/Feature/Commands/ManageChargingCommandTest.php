@@ -331,6 +331,7 @@ describe('solar', function () {
 
         $session = ChargingSession::factory()->active()->create([
             'mode' => ChargingMode::Solar,
+            'current_set_at' => now()->subMinutes(5),
         ]);
 
         $this->artisan('app:manage-charging')->assertSuccessful();
@@ -358,6 +359,7 @@ describe('solar', function () {
 
         ChargingSession::factory()->active()->create([
             'mode' => ChargingMode::Solar,
+            'current_set_at' => now()->subMinutes(5),
         ]);
 
         $this->artisan('app:manage-charging')->assertSuccessful();
@@ -387,6 +389,7 @@ describe('solar', function () {
         ChargingSession::factory()->active()->create([
             'mode' => ChargingMode::Solar,
             'max_current' => 10,
+            'current_set_at' => now()->subMinutes(5),
         ]);
 
         $this->artisan('app:manage-charging')->assertSuccessful();
@@ -432,6 +435,7 @@ describe('solar', function () {
         ChargingSession::factory()->active()->create([
             'mode' => ChargingMode::Solar,
             'max_current' => 10,
+            'current_set_at' => now()->subMinutes(5),
         ]);
 
         $this->artisan('app:manage-charging')->assertSuccessful();
@@ -488,6 +492,82 @@ describe('solar', function () {
         $this->artisan('app:manage-charging')->assertSuccessful();
 
         expect(ChargingSession::query()->count())->toBe(0);
+    });
+
+    it('waits for fresh metrics before adjusting after a power change', function () {
+        // Régression oscillation : juste après un changement d'ampérage, les métriques d'avant
+        // le changement montrent encore le surplus précédent. Ré-ajuster sur cette fenêtre « sale »
+        // faisait grimper l'ampérage au-delà de la production, puis couper. On doit attendre une
+        // fenêtre entièrement postérieure au dernier changement avant de décider.
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses(['app_config' => ['user_power' => 6 * 230]]);
+        fakeTempoResponses();
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        // Changement de puissance il y a 90s → seules les 2 métriques les plus récentes sont valides.
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(6)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -3000,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        $session = ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 6,
+            'current_set_at' => now()->subSeconds(90),
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertNotSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['params']['config_key'] ?? null) === 'user_power');
+        $session->refresh();
+        expect($session->ended_at)->toBeNull();
+    });
+
+    it('throttles down to minimum instead of stopping on a cheap day', function () {
+        // Régression oscillation : sur un jour bleu, une chute du surplus doit réduire l'ampérage
+        // (et tolérer un peu de réseau bon marché), pas couper la charge pour la relancer ensuite.
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses(['app_config' => ['user_power' => 12 * 230]]);
+        fakeTempoResponses();
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(12)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => 2000,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        $session = ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 12,
+            'current_set_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(function ($r) {
+            return $r->url() === 'http://198.51.100.10/rpc'
+                && ($r['method'] ?? null) === 'app_config.set'
+                && ($r['params']['config_key'] ?? null) === 'user_power'
+                && ($r['params']['config_value'] ?? null) === 6 * 230;
+        });
+        Http::assertNotSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc' && ($r['method'] ?? null) === 'charge.stop');
+        $session->refresh();
+        expect($session->ended_at)->toBeNull();
     });
 });
 

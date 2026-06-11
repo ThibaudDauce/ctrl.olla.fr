@@ -18,6 +18,7 @@ class ChargingSession extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'current_set_at' => 'datetime',
             'mode' => ChargingMode::class,
             'is_three_phase' => 'boolean',
         ];

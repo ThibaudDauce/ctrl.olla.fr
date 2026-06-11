@@ -151,6 +151,13 @@ class ManageChargingCommand extends Command
         $threshold = $tempo->costThreshold();
         $hpRate = $tempo->today()->hpRate();
 
+        $minAmps = config('charging.min_charge_amps');
+        $maxAmps = config('charging.max_charge_amps');
+
+        // Surplus solaire minimal pour qu'une charge à l'ampérage minimum reste sous le seuil de coût.
+        // Sert à la fois à démarrer et à arrêter, ce qui garantit la symétrie (pas de flapping autour du seuil).
+        $minSurplus = $minAmps * 230 * max(0, 1 - $threshold / $hpRate);
+
         $recentMetrics = Metric::query()
             ->latest('recorded_at')
             ->take(3)
@@ -159,17 +166,12 @@ class ManageChargingCommand extends Command
         $isCharging = $latest->charger_state->isCharging();
 
         if (! $isCharging && $latest->charger_state->isConnectable()) {
-            $minAmps = config('charging.min_charge_amps');
-            $chargePower = $minAmps * 230;
-            $minSurplusRatio = max(0, 1 - $threshold / $hpRate);
-            $minSurplus = $chargePower * $minSurplusRatio;
-
             $allBelowThreshold = $recentMetrics->count() >= 3
                 && $recentMetrics->every(fn (Metric $m) => $m->meter_power_total !== null && $m->meter_power_total < -$minSurplus);
 
             if ($allBelowThreshold) {
                 $avgSurplus = abs($recentMetrics->avg('meter_power_total'));
-                $amps = min(config('charging.max_charge_amps'), max($minAmps, (int) floor($avgSurplus / 230)));
+                $amps = min($maxAmps, max($minAmps, (int) floor($avgSurplus / 230)));
 
                 Log::info("Solar: starting charge at {$amps}A (tempo={$tempo->today()->name}, threshold={$threshold}€)");
                 $charger->setUserPower($amps);
@@ -178,6 +180,7 @@ class ManageChargingCommand extends Command
                     'started_at' => now(),
                     'mode' => ChargingMode::Solar,
                     'max_current' => $amps,
+                    'current_set_at' => now(),
                 ]);
                 $sms->send("Charge solaire démarrée à {$amps}A");
             }
@@ -186,41 +189,43 @@ class ManageChargingCommand extends Command
         }
 
         if ($isCharging && $session?->mode === ChargingMode::Solar) {
-            $chargerPower = $chargerInfo->userPower;
+            // On ne décide qu'à partir de métriques qui reflètent l'ampérage actuel : sans ce filtre,
+            // la fenêtre mélange des mesures prises avant le dernier changement de puissance et la
+            // régulation sur-réagit (rampe qui dépasse la production, puis coupure → oscillation).
+            $sinceLastChange = $session->current_set_at ?? $session->started_at;
+            $stableMetrics = $recentMetrics->filter(
+                fn (Metric $m) => $m->meter_power_total !== null
+                    && $m->recorded_at->greaterThanOrEqualTo($sinceLastChange)
+            );
 
-            $aboveThresholdCount = $recentMetrics
-                ->filter(function (Metric $m) use ($chargerPower, $hpRate, $threshold) {
-                    if ($m->meter_power_total === null) {
-                        return false;
-                    }
-                    $gridForCharging = min($chargerPower, max(0, $m->meter_power_total));
+            if ($stableMetrics->count() < 3) {
+                return;
+            }
 
-                    return ($gridForCharging / $chargerPower) * $hpRate > $threshold;
-                })
-                ->count();
+            $currentAmps = (int) floor($chargerInfo->userPower / 230);
+            $avgGrid = $stableMetrics->avg('meter_power_total');
 
-            if ($aboveThresholdCount >= 2) {
-                Log::info('Solar: stopping charge, cost above threshold');
+            // Puissance solaire réellement disponible pour la voiture = ce qu'elle tire déjà moins l'import réseau.
+            $availableSolar = $chargerInfo->userPower - $avgGrid;
+
+            if ($availableSolar < $minSurplus) {
+                Log::info("Solar: stopping charge, surplus below threshold (tempo={$tempo->today()->name})");
                 $charger->stop();
                 $this->closeSession($session, $latest, $sms);
 
                 return;
             }
 
-            if ($recentMetrics->count() >= 3) {
-                $currentAmps = (int) floor($chargerInfo->userPower / 230);
-                $avgPower = $recentMetrics->avg('meter_power_total');
-                $targetAmps = $currentAmps + (int) floor(-$avgPower / 230);
-                $targetAmps = max(config('charging.min_charge_amps'), min(config('charging.max_charge_amps'), $targetAmps));
+            $targetAmps = max($minAmps, min($maxAmps, (int) floor($availableSolar / 230)));
 
-                if ($targetAmps !== $currentAmps) {
-                    Log::info("Solar: adjusting from {$currentAmps}A to {$targetAmps}A");
-                    $charger->setUserPower($targetAmps);
-                    $sms->send("Charge solaire : {$currentAmps}A → {$targetAmps}A");
+            if ($targetAmps !== $currentAmps) {
+                Log::info("Solar: adjusting from {$currentAmps}A to {$targetAmps}A");
+                $charger->setUserPower($targetAmps);
+                $session->update(['current_set_at' => now()]);
+                $sms->send("Charge solaire : {$currentAmps}A → {$targetAmps}A");
 
-                    if ($targetAmps > ($session->max_current ?? 0)) {
-                        $session->update(['max_current' => $targetAmps]);
-                    }
+                if ($targetAmps > ($session->max_current ?? 0)) {
+                    $session->update(['max_current' => $targetAmps]);
                 }
             }
         }
