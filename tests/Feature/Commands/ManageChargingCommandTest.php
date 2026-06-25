@@ -18,6 +18,7 @@ beforeEach(function () {
         'charging.phase_max_amps' => 20,
         'charging.min_charge_amps' => 6,
         'charging.max_charge_amps' => 32,
+        'charging.solar_margin_watts' => 230,
         'charging.tempo.margin' => 0.20,
         'charging.tempo.rates.bleu_hc' => 0.1056,
         'charging.tempo.rates.bleu_hp' => 0.1369,
@@ -283,6 +284,37 @@ describe('solar', function () {
             ->and($session->mode)->toBe(ChargingMode::Solar);
     });
 
+    it('starts solar charge a step below the available surplus to keep an export margin', function () {
+        // Surplus moyen de 2000W. Sans marge on démarrerait à 8A (floor(2000/230)) ;
+        // avec la marge de 230W on démarre un cran en dessous, à 7A.
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -2000,
+                'charger_state' => ChargerState::NeedAuth,
+                'meter_current_l1' => 5,
+                'meter_current_l2' => 5,
+                'meter_current_l3' => 5,
+            ]);
+        }
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        $session = ChargingSession::query()->first();
+        expect($session)->not->toBeNull()
+            ->and($session->mode)->toBe(ChargingMode::Solar)
+            ->and($session->max_current)->toBe(7);
+
+        Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['method'] ?? null) === 'app_config.set'
+            && ($r['params']['config_key'] ?? null) === 'user_power'
+            && ($r['params']['config_value'] ?? null) === 7 * 230);
+        Http::assertNotSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['params']['config_value'] ?? null) === 8 * 230);
+    });
+
     it('does not start solar on rouge day with small surplus', function () {
         // Jour rouge HP 0.7324€, seuil = 0.12672
         // minSurplusRatio = 1 - 0.12672/0.7324 = 0.8270 → minSurplus = 1380 × 0.827 ≈ 1141W
@@ -369,6 +401,8 @@ describe('solar', function () {
     });
 
     it('increases current when surplus is available during solar charge', function () {
+        // Charge à 10A (2300W) avec 2000W d'export → surplus dispo = 4300W.
+        // Sans marge on viserait 18A ; avec la marge de 230W on reste un cran en dessous → 17A.
         Http::swap(new Factory);
         Cache::forget('tempo_day_color');
         fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
@@ -398,8 +432,79 @@ describe('solar', function () {
             return $r->url() === 'http://198.51.100.10/rpc'
                 && ($r['method'] ?? null) === 'app_config.set'
                 && ($r['params']['config_key'] ?? null) === 'user_power'
-                && ($r['params']['config_value'] ?? null) === 18 * 230;
+                && ($r['params']['config_value'] ?? null) === 17 * 230;
         });
+    });
+
+    it('keeps an export margin instead of charging right at the edge', function () {
+        // Charge à 10A (2300W) en important 690W → surplus solaire réel = 1610W (pile 7A).
+        // Sans marge on viserait 7A et on consommerait tout le surplus ; avec la marge de 230W
+        // on vise 6A et on garde ~230W d'export.
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+        fakeTempoResponses();
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(10)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => 690,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 10,
+            'current_set_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['method'] ?? null) === 'app_config.set'
+            && ($r['params']['config_key'] ?? null) === 'user_power'
+            && ($r['params']['config_value'] ?? null) === 6 * 230);
+        Http::assertNotSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['params']['config_value'] ?? null) === 7 * 230);
+    });
+
+    it('caps solar charge at the maximum amps when surplus is very large', function () {
+        // Charge à 10A (2300W) avec 9000W d'export → surplus dispo = 11300W (~48A théoriques),
+        // plafonné à la limite de 32A.
+        Http::swap(new Factory);
+        Cache::forget('tempo_day_color');
+        fakeLektricoResponses(['app_config' => ['user_power' => 10 * 230]]);
+        fakeTempoResponses();
+
+        $this->travelTo(now()->setTime(12, 0));
+
+        foreach (range(0, 2) as $i) {
+            Metric::factory()->charging(10)->create([
+                'recorded_at' => now()->subMinutes(2 - $i),
+                'meter_power_total' => -9000,
+                'meter_current_l1' => 10,
+                'meter_current_l2' => 10,
+                'meter_current_l3' => 10,
+            ]);
+        }
+
+        ChargingSession::factory()->active()->create([
+            'mode' => ChargingMode::Solar,
+            'max_current' => 10,
+            'current_set_at' => now()->subMinutes(5),
+        ]);
+
+        $this->artisan('app:manage-charging')->assertSuccessful();
+
+        Http::assertSent(fn ($r) => $r->url() === 'http://198.51.100.10/rpc'
+            && ($r['method'] ?? null) === 'app_config.set'
+            && ($r['params']['config_key'] ?? null) === 'user_power'
+            && ($r['params']['config_value'] ?? null) === 32 * 230);
     });
 
     it('decreases current when partially consuming from grid during solar charge', function () {
@@ -444,7 +549,7 @@ describe('solar', function () {
             return $r->url() === 'http://198.51.100.10/rpc'
                 && ($r['method'] ?? null) === 'app_config.set'
                 && ($r['params']['config_key'] ?? null) === 'user_power'
-                && ($r['params']['config_value'] ?? null) === 8 * 230;
+                && ($r['params']['config_value'] ?? null) === 7 * 230;
         });
     });
 

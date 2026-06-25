@@ -152,7 +152,6 @@ class ManageChargingCommand extends Command
         $hpRate = $tempo->today()->hpRate();
 
         $minAmps = config('charging.min_charge_amps');
-        $maxAmps = config('charging.max_charge_amps');
 
         // Surplus solaire minimal pour qu'une charge à l'ampérage minimum reste sous le seuil de coût.
         // Sert à la fois à démarrer et à arrêter, ce qui garantit la symétrie (pas de flapping autour du seuil).
@@ -171,7 +170,7 @@ class ManageChargingCommand extends Command
 
             if ($allBelowThreshold) {
                 $avgSurplus = abs($recentMetrics->avg('meter_power_total'));
-                $amps = min($maxAmps, max($minAmps, (int) floor($avgSurplus / 230)));
+                $amps = $this->solarSurplusToAmps($avgSurplus);
 
                 Log::info("Solar: starting charge at {$amps}A (tempo={$tempo->today()->name}, threshold={$threshold}€)");
                 $charger->setUserPower($amps);
@@ -216,7 +215,7 @@ class ManageChargingCommand extends Command
                 return;
             }
 
-            $targetAmps = max($minAmps, min($maxAmps, (int) floor($availableSolar / 230)));
+            $targetAmps = $this->solarSurplusToAmps($availableSolar);
 
             if ($targetAmps !== $currentAmps) {
                 Log::info("Solar: adjusting from {$currentAmps}A to {$targetAmps}A");
@@ -229,6 +228,19 @@ class ManageChargingCommand extends Command
                 }
             }
         }
+    }
+
+    private function solarSurplusToAmps(float $availableWatts): int
+    {
+        $minAmps = config('charging.min_charge_amps');
+        $maxAmps = config('charging.max_charge_amps');
+
+        // Marge gardée sous la production : on vise un ampérage un cran en dessous du surplus disponible
+        // au lieu de charger pile au maximum. On garde ainsi un coussin d'export, et une petite baisse de
+        // production fait juste injecter un peu sur le réseau au lieu d'aller importer.
+        $margin = config('charging.solar_margin_watts');
+
+        return max($minAmps, min($maxAmps, (int) floor(($availableWatts - $margin) / 230)));
     }
 
     public function isInOffPeakWindow(?CarbonInterface $time = null): bool

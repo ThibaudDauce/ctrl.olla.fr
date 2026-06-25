@@ -14,6 +14,8 @@ return [
 
     'max_charge_amps' => 16,
 
+    'solar_margin_watts' => (int) env('SOLAR_MARGIN_WATTS', 230),
+
     'tempo' => [
         'margin' => (float) env('TEMPO_MARGIN', 0.20),
         'rates' => [
