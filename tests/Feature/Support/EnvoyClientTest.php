@@ -2,6 +2,7 @@
 
 use App\Support\Envoy\EnvoyClient;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 beforeEach(function () {
     config([
@@ -10,22 +11,61 @@ beforeEach(function () {
     ]);
 });
 
-it('fetches production info', function () {
-    fakeEnvoyResponses([
-        'wattsNow' => 3200,
-        'wattHoursToday' => 15000,
+it('reads the production meter, not the inverters aggregate', function () {
+    fakeEnvoyResponses(3200);
+
+    $client = new EnvoyClient('198.51.100.12', 'test-token');
+
+    // Le bloc `inverters` du fake vaut 3 W : le lire donnerait la valeur périmée.
+    expect($client->productionWatts())->toBe(3200.0);
+
+    Http::assertSent(function ($request) {
+        return $request->url() === 'https://198.51.100.12/production.json'
+            && $request->hasHeader('Authorization', 'Bearer test-token');
+    });
+});
+
+it('retries when the envoy answers 503 resource busy', function () {
+    Sleep::fake();
+
+    Http::fake([
+        'https://198.51.100.12/production.json' => Http::sequence()
+            ->push(['status' => 503, 'info' => 'Resource busy, please retry after 30 seconds'], 503)
+            ->push(envoyProductionPayload(1800)),
     ]);
 
     $client = new EnvoyClient('198.51.100.12', 'test-token');
-    $production = $client->production();
 
-    expect($production->wattsNow)->toBe(3200.0)
-        ->and($production->wattHoursToday)->toBe(15000.0);
+    expect($client->productionWatts())->toBe(1800.0);
 
-    Http::assertSent(function ($request) {
-        return $request->url() === 'https://198.51.100.12/api/v1/production'
-            && $request->hasHeader('Authorization', 'Bearer test-token');
-    });
+    Http::assertSentCount(2);
+});
+
+it('retries when the envoy refuses the connection', function () {
+    Sleep::fake();
+
+    Http::fake([
+        'https://198.51.100.12/production.json' => Http::sequence()
+            ->pushFailedConnection('Connection refused')
+            ->push(envoyProductionPayload(1800)),
+    ]);
+
+    $client = new EnvoyClient('198.51.100.12', 'test-token');
+
+    expect($client->productionWatts())->toBe(1800.0);
+});
+
+it('fails loudly when the envoy never returns a production meter', function () {
+    Sleep::fake();
+
+    Http::fake([
+        'https://198.51.100.12/production.json' => Http::response(['status' => 503, 'info' => 'Resource busy, please retry after 30 seconds'], 503),
+    ]);
+
+    $client = new EnvoyClient('198.51.100.12', 'test-token');
+
+    expect(fn () => $client->productionWatts())
+        ->toThrow(RuntimeException::class, 'Réponse Envoy invalide (HTTP 503)');
 });
 
 it('fetches token from enphase cloud', function () {

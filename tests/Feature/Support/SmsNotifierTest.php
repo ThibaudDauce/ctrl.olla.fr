@@ -89,6 +89,18 @@ it('can retry after a failed send', function () {
     expect($second)->toBeTrue();
 });
 
+it('returns false instead of throwing when the SMS gateway is unreachable', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::failedConnection('Connection refused'),
+    ]);
+
+    $notifier = new SmsNotifier;
+    $result = $notifier->send('Test', 'unreachable-key');
+
+    expect($result)->toBeFalse()
+        ->and(Cache::has('sms_throttle:unreachable-key'))->toBeFalse();
+});
+
 it('returns false when not configured', function () {
     Http::fake();
 

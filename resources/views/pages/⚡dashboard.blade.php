@@ -26,7 +26,7 @@ new class extends Component {
     public function liveSolar(): float
     {
         try {
-            return config('services.envoy.token') ? EnvoyClient::make()->production()->wattsNow : 0;
+            return config('services.envoy.token') ? EnvoyClient::make()->productionWatts() : 0;
         } catch (\Throwable) {
             return 0;
         }

@@ -64,17 +64,34 @@ function fakeMeterResponses(array $overrides = []): void
     ]);
 }
 
-function fakeEnvoyResponses(array $overrides = []): void
+/**
+ * Réponse /production.json d'un Envoy-S metered triphasé.
+ *
+ * Le bloc `inverters` porte volontairement une autre valeur que le compteur :
+ * c'est un agrégat décalé de plusieurs minutes, ce n'est pas celui qu'on lit.
+ *
+ * @return array<string, mixed>
+ */
+function envoyProductionPayload(float $watts): array
+{
+    return [
+        'production' => [
+            ['type' => 'inverters', 'activeCount' => 10, 'readingTime' => 1788951026, 'wNow' => 3, 'whLifetime' => 4091080],
+            ['type' => 'eim', 'activeCount' => 1, 'measurementType' => 'production', 'readingTime' => 1788951625, 'wNow' => $watts, 'whLifetime' => 27694361.962],
+        ],
+        'consumption' => [
+            ['type' => 'eim', 'activeCount' => 1, 'measurementType' => 'total-consumption', 'wNow' => 1230.301],
+            ['type' => 'eim', 'activeCount' => 1, 'measurementType' => 'net-consumption', 'wNow' => 533.574],
+        ],
+    ];
+}
+
+function fakeEnvoyResponses(float $watts = 2500): void
 {
     $host = config('services.envoy.host');
 
-    $data = array_merge([
-        'wattsNow' => 2500,
-        'wattHoursToday' => 12000,
-    ], $overrides);
-
     Http::fake([
-        "https://{$host}/api/v1/production" => Http::response($data),
+        "https://{$host}/production.json" => Http::response(envoyProductionPayload($watts)),
     ]);
 }
 
@@ -108,10 +125,7 @@ function fakeAllDevices(array $overrides = []): void
         'current' => [3.0, 3.0, 3.0],
     ], $overrides['meter'] ?? []);
 
-    $envoy = array_merge([
-        'wattsNow' => 2500,
-        'wattHoursToday' => 12000,
-    ], $overrides['envoy'] ?? []);
+    $envoyWatts = $overrides['envoy_watts'] ?? 2500;
 
     Http::fake([
         "http://{$host_lektrico}/rpc/charger_info.get" => Http::response($chargerInfo),
@@ -119,6 +133,6 @@ function fakeAllDevices(array $overrides = []): void
         "http://{$host_lektrico}/rpc/app_config.get" => Http::response($appConfig),
         "http://{$host_lektrico}/rpc" => Http::response(['result' => true]),
         "http://{$host_meter}/rpc/Meter_info.Get" => Http::response($meter),
-        "https://{$host_envoy}/api/v1/production" => Http::response($envoy),
+        "https://{$host_envoy}/production.json" => Http::response(envoyProductionPayload($envoyWatts)),
     ]);
 }

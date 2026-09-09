@@ -3,6 +3,7 @@
 namespace App\Support\Envoy;
 
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 class EnvoyClient
 {
@@ -16,22 +17,30 @@ class EnvoyClient
         return new static(config('services.envoy.host'), config('services.envoy.token'));
     }
 
-    public function production(): ProductionInfo
+    /**
+     * Puissance produite instantanée, en watts.
+     */
+    public function productionWatts(): float
     {
+        // Pas /api/v1/production : depuis le firmware D8.3.5169, cet endpoint renvoie
+        // wattsNow: -1. Sur un Envoy-S metered, la production réelle est celle du
+        // compteur de production (bloc eim), pas celle remontée par les onduleurs.
+        // L'Envoy répond par ailleurs 503 « Resource busy » ou refuse la connexion
+        // quand il est occupé : on retente avant d'abandonner la minute.
         $response = Http::withoutVerifying()
             ->withToken($this->token)
-            ->get("https://{$this->host}/api/v1/production");
+            ->timeout(5)
+            ->retry(3, 3000, throw: false)
+            ->get("https://{$this->host}/production.json");
 
-        $data = $response->json();
+        $meter = collect($response->json('production'))
+            ->first(fn ($block) => is_array($block) && ($block['measurementType'] ?? null) === 'production');
 
-        if (! is_array($data) || ! isset($data['wattsNow'], $data['wattHoursToday'])) {
-            throw new \RuntimeException("Réponse Envoy invalide (HTTP {$response->status()}): {$response->body()}");
+        if (! isset($meter['wNow'])) {
+            throw new RuntimeException("Réponse Envoy invalide (HTTP {$response->status()}): {$response->body()}");
         }
 
-        return new ProductionInfo(
-            wattsNow: $data['wattsNow'],
-            wattHoursToday: $data['wattHoursToday'],
-        );
+        return (float) $meter['wNow'];
     }
 
     public function serialNumber(): string

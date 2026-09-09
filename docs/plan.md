@@ -46,10 +46,13 @@ API HTTPS locale avec certificat auto-signé (vérification SSL désactivée).
 Le token est passé en header `Authorization: Bearer <token>` sur toutes les requêtes locales.
 
 **Endpoints** :
-- `GET /api/v1/production` → `wattsNow` (W instantanés), `wattHoursToday`, `wattHoursLifetime` — le plus simple, suffisant pour le besoin
+- `GET /production.json` → bloc `production` de type `eim` / `measurementType: production`, champ `wNow` (W instantanés mesurés par le compteur) — c'est ce qu'on lit
 - `GET /ivp/meters/readings` → données détaillées par phase (voltage, current, power factor, énergie cumulée) — utile si on veut la production par phase
+- `GET /api/v1/production` → **inutilisable** : depuis le firmware D8.3.5169 il renvoie `wattsNow: -1` et `wattHoursToday: 0`
 
-Les données de production se rafraîchissent toutes les ~5 minutes côté Envoy.
+Dans `/production.json`, le bloc `inverters` est un agrégat remonté par les micro-onduleurs avec ~10 minutes de retard ; le bloc `eim` vient du compteur et est instantané.
+
+L'Envoy répond `503 {"info": "Resource busy, please retry after 30 seconds"}` ou refuse carrément la connexion quand il est occupé — d'où le retry côté client.
 
 ### Notifications SMS Free (`FREE_SMS_USER`, `FREE_SMS_KEY`)
 

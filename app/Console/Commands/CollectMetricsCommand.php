@@ -56,9 +56,7 @@ class CollectMetricsCommand extends Command
                 return;
             }
 
-            $production = EnvoyClient::make()->production();
-
-            $data['solar_power'] = $production->wattsNow;
+            $data['solar_power'] = EnvoyClient::make()->productionWatts();
         } catch (Throwable $e) {
             report($e);
             $sms->send("Erreur Envoy: {$e->getMessage()}", 'device_envoy');
