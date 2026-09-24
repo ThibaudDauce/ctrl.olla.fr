@@ -221,7 +221,6 @@ class ManageChargingCommand extends Command
                 Log::info("Solar: adjusting from {$currentAmps}A to {$targetAmps}A");
                 $charger->setUserPower($targetAmps);
                 $session->update(['current_set_at' => now()]);
-                $sms->send("Charge solaire : {$currentAmps}A → {$targetAmps}A");
 
                 if ($targetAmps > ($session->max_current ?? 0)) {
                     $session->update(['max_current' => $targetAmps]);
