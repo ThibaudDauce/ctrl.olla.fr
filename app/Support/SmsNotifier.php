@@ -9,6 +9,25 @@ use Illuminate\Support\Facades\Log;
 
 class SmsNotifier
 {
+    /**
+     * N'alerte qu'à partir de la deuxième occurrence dans les 15 minutes. Les capteurs
+     * sont interrogés chaque minute : une panne réelle se répète à la collecte suivante,
+     * alors qu'un timeout isolé se résout tout seul et n'a pas à réveiller qui que ce soit.
+     */
+    public function sendIfRepeated(string $message, string $key): bool
+    {
+        $cacheKey = "sms_repeat:{$key}";
+        $alreadySeen = Cache::has($cacheKey);
+
+        Cache::put($cacheKey, true, now()->addMinutes(15));
+
+        if (! $alreadySeen) {
+            return false;
+        }
+
+        return $this->send($message, $key);
+    }
+
     public function send(string $message, ?string $throttleKey = null): bool
     {
         if ($throttleKey) {

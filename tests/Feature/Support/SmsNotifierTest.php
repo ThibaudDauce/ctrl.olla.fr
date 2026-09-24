@@ -101,6 +101,77 @@ it('returns false instead of throwing when the SMS gateway is unreachable', func
         ->and(Cache::has('sms_throttle:unreachable-key'))->toBeFalse();
 });
 
+it('stays silent on an isolated error', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    expect($notifier->sendIfRepeated('Erreur meter', 'device_meter'))->toBeFalse();
+
+    Http::assertNothingSent();
+});
+
+it('alerts on the second error within 15 minutes', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    $notifier->sendIfRepeated('Erreur meter', 'device_meter');
+    $this->travel(14)->minutes();
+
+    expect($notifier->sendIfRepeated('Erreur meter', 'device_meter'))->toBeTrue();
+
+    Http::assertSentCount(1);
+});
+
+it('stays silent when errors are more than 15 minutes apart', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    $notifier->sendIfRepeated('Erreur meter', 'device_meter');
+    $this->travel(16)->minutes();
+
+    expect($notifier->sendIfRepeated('Erreur meter', 'device_meter'))->toBeFalse();
+
+    Http::assertNothingSent();
+});
+
+it('counts repeated errors per key', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    $notifier->sendIfRepeated('Erreur meter', 'device_meter');
+
+    expect($notifier->sendIfRepeated('Erreur Envoy', 'device_envoy'))->toBeFalse();
+
+    Http::assertNothingSent();
+});
+
+it('still throttles repeated alerts for an hour once sent', function () {
+    Http::fake([
+        'smsapi.free-mobile.fr/*' => Http::response('', 200),
+    ]);
+
+    $notifier = new SmsNotifier;
+
+    $notifier->sendIfRepeated('Erreur meter', 'device_meter');
+    $notifier->sendIfRepeated('Erreur meter', 'device_meter');
+
+    expect($notifier->sendIfRepeated('Erreur meter', 'device_meter'))->toBeFalse();
+
+    Http::assertSentCount(1);
+});
+
 it('returns false when not configured', function () {
     Http::fake();
 

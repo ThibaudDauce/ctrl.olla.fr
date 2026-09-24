@@ -44,7 +44,7 @@ class CollectMetricsCommand extends Command
             $data['meter_current_l3'] = $info->currentPerPhase[2] ?? null;
         } catch (Throwable $e) {
             report($e);
-            $sms->send("Erreur meter: {$e->getMessage()}", 'device_meter');
+            $sms->sendIfRepeated("Erreur meter: {$e->getMessage()}", 'device_meter');
         }
     }
 
@@ -59,7 +59,7 @@ class CollectMetricsCommand extends Command
             $data['solar_power'] = EnvoyClient::make()->productionWatts();
         } catch (Throwable $e) {
             report($e);
-            $sms->send("Erreur Envoy: {$e->getMessage()}", 'device_envoy');
+            $sms->sendIfRepeated("Erreur Envoy: {$e->getMessage()}", 'device_envoy');
         }
     }
 
@@ -75,7 +75,7 @@ class CollectMetricsCommand extends Command
             $data['charger_current_l3'] = $info->currents[2] ?? null;
         } catch (Throwable $e) {
             report($e);
-            $sms->send("Erreur borne: {$e->getMessage()}", 'device_charger');
+            $sms->sendIfRepeated("Erreur borne: {$e->getMessage()}", 'device_charger');
         }
     }
 }
